@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  papinhababy-pcp:
+    build: .
+    container_name: papinhababy-pcp
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    # Opcional: para logs úteis
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
