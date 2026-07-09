@@ -1,0 +1,20 @@
+# Códigos numéricos de setores fornecidos pelo gestor (uso informativo/futuro)
+setores:
+  "00": PCP
+  "41": DESENVOLVIMENTO
+  "70": AGUARDANDO_ENCAIXE
+  "01": ENCAIXE
+  "84": CD_CORTE
+  "03": CORTE
+  "12": PRE_ESTAMPARIA
+  "22": ESTAMPARIA
+  "23": ESTAMPARIA_NUCA
+  "32": QUALIDADE_ESTAMPARIA
+  "130": CONTROLE_QUALIDADE
+  "10": PRE_COSTURA
+  "20": COSTURA
+  "30": QUALIDADE_COSTURA
+  "18": PRE_REVISAO_EMBALAGEM
+  "28": REVISAO
+  "38": EMBALAGEM
+# Sem código conhecido (apareceram no Mapa): ENTRETELA, QUAL_ENTRETELA, CASEADO_BOTAO

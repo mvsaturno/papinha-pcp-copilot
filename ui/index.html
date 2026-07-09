@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Copiloto PCP — Papinha Baby</title>
+  <meta name="description" content="Ferramenta de análise de PCP para pedidos MAGAZINE — Papinha Baby"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── Tokens ─────────────────────────────────────────────── */
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #111827;
+      --surface2:  #1a2236;
+      --border:    #1e2d45;
+      --border2:   #2a3f60;
+      --text:      #e2e8f0;
+      --text-muted:#8899bb;
+      --accent:    #3b82f6;
+      --accent-glow: rgba(59,130,246,0.25);
+      --green:     #22c55e;
+      --green-bg:  rgba(34,197,94,0.12);
+      --yellow:    #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red:       #ef4444;
+      --red-bg:    rgba(239,68,68,0.12);
+      --radius:    12px;
+      --radius-sm: 8px;
+      --shadow:    0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    /* ── Reset ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .app {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 36px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      box-shadow: 0 0 20px rgba(139,92,246,0.3);
+    }
+    .header-text h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #e2e8f0, #93c5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-text p {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .badge {
+      margin-left: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 100px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* ── Upload Panel ───────────────────────────────────────── */
+    .upload-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .upload-panel h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .upload-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .drop-zone {
+      border: 2px dashed var(--border2);
+      border-radius: var(--radius-sm);
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      background: var(--bg);
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+    .drop-zone.file-ok {
+      border-color: var(--green);
+      background: var(--green-bg);
+    }
+    .drop-zone.file-err {
+      border-color: var(--red);
+      background: var(--red-bg);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .dz-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+    .dz-label {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .dz-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .dz-status {
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      min-height: 18px;
+      transition: all 0.2s;
+    }
+    .dz-status.ok { color: var(--green); }
+    .dz-status.err { color: var(--red); }
+    .dz-status.loading { color: var(--accent); }
+
+    /* ── Botão Analisar ─────────────────────────────────────── */
+    #btn-analisar {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.3px;
+      box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+    }
+    #btn-analisar:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(59,130,246,0.5);
+    }
+    #btn-analisar:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Alertas globais ────────────────────────────────────── */
+    #alertas-globais {
+      display: none;
+      background: rgba(234,179,8,0.08);
+      border: 1px solid rgba(234,179,8,0.3);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: var(--yellow);
+    }
+    #alertas-globais.visible { display: block; }
+
+    /* ── Erros de entrada ───────────────────────────────────── */
+    #erros-entrada {
+      display: none;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: var(--red);
+    }
+    #erros-entrada.visible { display: block; }
+
+    /* ── Cards de resultado ─────────────────────────────────── */
+    #resultados { margin-top: 4px; }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-left: 2px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+      overflow: hidden;
+      transition: box-shadow 0.2s;
+    }
+    .card:hover {
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .card-header:hover {
+      background: var(--surface2);
+    }
+    .card.expanded .card-header {
+      border-bottom-color: var(--border);
+      background: var(--surface2);
+    }
+    .veredito-badge {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .veredito-badge.VERDE { background: var(--green-bg); color: var(--green); border: 1.5px solid var(--green); }
+    .veredito-badge.AMARELO { background: var(--yellow-bg); color: var(--yellow); border: 1.5px solid var(--yellow); }
+    .veredito-badge.VERMELHO { background: var(--red-bg); color: var(--red); border: 1.5px solid var(--red); }
+
+    .card-title {
+      flex: 1;
+      min-width: 0;
+    }
+    .card-title strong {
+      font-size: 14px;
+      font-weight: 600;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-title span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .meta-item {
+      text-align: right;
+    }
+    .meta-item .val {
+      font-size: 14px;
+      font-weight: 600;
+      display: block;
+    }
+    .meta-item .lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .chevron {
+      font-size: 14px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .card.expanded .chevron { transform: rotate(180deg); }
+
+    /* ── Card body ──────────────────────────────────────────── */
+    .card-body {
+      display: none;
+      padding: 20px;
+    }
+    .card.expanded .card-body { display: block; }
+
+    .sugestao-box {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .sugestao-box.verde { border-color: rgba(34,197,94,0.4); color: var(--green); }
+    .sugestao-box.vermelho { border-color: rgba(239,68,68,0.4); color: var(--red); }
+    .sugestao-box.amarelo { border-color: rgba(234,179,8,0.4); color: var(--yellow); }
+
+    .motivos-list {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+    .motivos-list li {
+      display: flex;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 4px 0;
+    }
+    .motivos-list li::before { content: "•"; color: var(--border2); }
+
+    /* ── Seções internas do card ────────────────────────────── */
+    .inner-sections {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 700px) { .inner-sections { grid-template-columns: 1fr; } }
+
+    .inner-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+    }
+    .inner-box h4 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .inner-box table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .inner-box table td {
+      padding: 3px 0;
+      vertical-align: top;
+    }
+    .inner-box table td:first-child {
+      color: var(--text-muted);
+      width: 50%;
+      padding-right: 8px;
+    }
+    .inner-box table td:last-child {
+      font-weight: 500;
+    }
+
+    /* ── Insumos ────────────────────────────────────────────── */
+    .insumo-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 100px;
+      margin-bottom: 4px;
+    }
+    .tag-ok-estoque { background: var(--green-bg); color: var(--green); }
+    .tag-ok-futuro { background: var(--yellow-bg); color: var(--yellow); }
+    .tag-falta { background: var(--red-bg); color: var(--red); }
+    .tag-bloqueante { background: rgba(239,68,68,0.18); color: var(--red); font-size: 10px; padding: 1px 6px; }
+
+    .insumo-row {
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .insumo-row:last-child { border-bottom: none; }
+    .insumo-nome { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
+    .insumo-meta { font-size: 11px; color: var(--text-muted); }
+
+    /* ── Cronograma timeline ────────────────────────────────── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .timeline-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 12px;
+    }
+    .tl-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .tl-content { flex: 1; }
+    .tl-nome { font-weight: 500; }
+    .tl-datas { color: var(--text-muted); font-size: 11px; }
+
+    /* ── Capacidade mini-tabela ─────────────────────────────── */
+    .cap-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .cap-row:last-child { border-bottom: none; }
+    .cap-row.alvo { background: rgba(59,130,246,0.08); border-radius: 4px; padding: 4px 6px; }
+    .cap-situacao { font-size: 11px; font-weight: 600; }
+    .cap-ok { color: var(--green); }
+    .cap-fail { color: var(--red); }
+
+    /* ── Details brutos ─────────────────────────────────────── */
+    details.brutos {
+      margin-top: 14px;
+    }
+    details.brutos summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-muted);
+      user-select: none;
+      padding: 6px 0;
+    }
+    details.brutos summary:hover { color: var(--text); }
+    details.brutos .brutos-content {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin-top: 8px;
+      font-size: 12px;
+      font-family: monospace;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      color: var(--text-muted);
+    }
+
+    /* ── Avisos leitura ─────────────────────────────────────── */
+    #avisos-leitura {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    #avisos-leitura.visible { display: block; }
+    #avisos-leitura h3 { font-size: 13px; color: var(--yellow); margin-bottom: 8px; }
+
+    /* ── Tooltip de ajuda ───────────────────────────────────── */
+    .hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+    /* ── Empty state ────────────────────────────────────────── */
+    #empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    #empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    #empty-state p { font-size: 14px; }
+
+    /* ── Resumo de semanas (capacidade global) ──────────────── */
+    .weeks-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .week-chip {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 100px;
+      border: 1px solid var(--border2);
+      color: var(--text-muted);
+    }
+    .week-chip.alvo { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+    .week-chip.sugerida { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+
+    /* ── Transitions ────────────────────────────────────────── */
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">🧵</div>
+    <div class="header-text">
+      <h1>Copiloto de Análise PCP</h1>
+      <p>Papinha Baby — Pedidos MAGAZINE / Riachuelo</p>
+    </div>
+    <span class="badge">MVP v1.0</span>
+  </header>
+
+  <!-- Upload Panel -->
+  <div class="upload-panel">
+    <h2>📂 Enviar PDFs do Excia</h2>
+    <div class="upload-grid">
+      <!-- Pedido -->
+      <div class="drop-zone" id="dz-pedido" data-campo="pedido">
+        <input type="file" id="file-pedido" accept=".pdf" onchange="onFileChange(this,'pedido')"/>
+        <span class="dz-icon">📋</span>
+        <div class="dz-label">Emissão de Pedido</div>
+        <div class="dz-sub">wEspelhoPF</div>
+        <div class="dz-status" id="status-pedido"></div>
+      </div>
+      <!-- MRP -->
+      <div class="drop-zone" id="dz-mrp" data-campo="mrp">
+        <input type="file" id="file-mrp" accept=".pdf" onchange="onFileChange(this,'mrp')"/>
+        <span class="dz-icon">🔗</span>
+        <div class="dz-label">MRP — Consumos</div>
+        <div class="dz-sub">wPCPMatCons3 (Detalhado)</div>
+        <div class="dz-status" id="status-mrp"></div>
+      </div>
+      <!-- Capacidade -->
+      <div class="drop-zone" id="dz-capacidade" data-campo="capacidade">
+        <input type="file" id="file-capacidade" accept=".pdf" onchange="onFileChange(this,'capacidade')"/>
+        <span class="dz-icon">📊</span>
+        <div class="dz-label">Resumo de Capacidade</div>
+        <div class="dz-sub">Resumo por Período</div>
+        <div class="dz-status" id="status-capacidade"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button id="btn-analisar" disabled onclick="executarAnalise()" style="flex:2">
+        <span id="btn-icon">⚡</span>
+        <span id="btn-text">Analisar PDFs</span>
+      </button>
+      <button id="btn-demo" onclick="executarAnaliseDemo()" style="flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text-muted);font-size:12px;font-weight:600;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s">
+        <span>💡</span>
+        <span>Carregar Fixtures (Demo)</span>
+      </button>
+    </div>
+    <p class="hint">Arraste os PDFs para as áreas acima ou clique para selecionar. A ferramenta é somente leitura — nenhum dado é gravado.</p>
+  </div>
+
+  <!-- Resultados -->
+  <div id="resultados">
+    <div id="empty-state">
+      <div class="empty-icon">📈</div>
+      <p>Envie os três PDFs do Excia para iniciar a análise.</p>
+    </div>
+
+    <div id="erros-entrada"></div>
+    <div id="alertas-globais"></div>
+    <div id="avisos-leitura"></div>
+    <div id="cards-container"></div>
+  </div>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Estado
+══════════════════════════════════════════════════════════ */
+const FILES = { pedido: null, mrp: null, capacidade: null };
+const STATUS_VALIDO = {};
+
+/* ═══════════════════════════════════════════════════════════
+   Drag & Drop
+══════════════════════════════════════════════════════════ */
+document.querySelectorAll('.drop-zone').forEach(dz => {
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const campo = dz.dataset.campo;
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const inp = dz.querySelector('input[type=file]');
+      // Criar um DataTransfer para setar o arquivo no input
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      inp.files = dt.files;
+      handleFile(file, campo);
+    }
+  });
+});
+
+function onFileChange(input, campo) {
+  if (input.files[0]) handleFile(input.files[0], campo);
+}
+
+async function handleFile(file, campo) {
+  FILES[campo] = file;
+  STATUS_VALIDO[campo] = false;
+  setStatus(campo, 'loading', '⏳ Verificando arquivo...');
+  setDzClass(campo, '');
+
+  const fd = new FormData();
+  fd.append('arquivo', file);
+
+  try {
+    const res = await fetch(`/identificar?campo=${encodeURIComponent(campo)}`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      STATUS_VALIDO[campo] = true;
+      setStatus(campo, 'ok', data.mensagem);
+      setDzClass(campo, 'file-ok');
+    } else {
+      setStatus(campo, 'err', data.mensagem);
+      setDzClass(campo, 'file-err');
+    }
+  } catch(e) {
+    setStatus(campo, 'err', 'Erro ao verificar arquivo');
+    setDzClass(campo, 'file-err');
+  }
+
+  atualizarBotao();
+}
+
+function setStatus(campo, cls, msg) {
+  const el = document.getElementById(`status-${campo}`);
+  el.className = `dz-status ${cls}`;
+  el.textContent = msg;
+}
+
+function setDzClass(campo, cls) {
+  const el = document.getElementById(`dz-${campo}`);
+  el.className = `drop-zone ${cls}`;
+}
+
+function atualizarBotao() {
+  const ok = STATUS_VALIDO.pedido && STATUS_VALIDO.mrp && STATUS_VALIDO.capacidade;
+  document.getElementById('btn-analisar').disabled = !ok;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Análise
+══════════════════════════════════════════════════════════ */
+async function executarAnalise() {
+  const btn = document.getElementById('btn-analisar');
+  const icon = document.getElementById('btn-icon');
+  const text = document.getElementById('btn-text');
+
+  btn.disabled = true;
+  icon.outerHTML = `<div class="spinner" id="btn-icon"></div>`;
+  text.textContent = 'Analisando...';
+
+  const fd = new FormData();
+  fd.append('pedido', FILES.pedido);
+  fd.append('mrp', FILES.mrp);
+  fd.append('capacidade', FILES.capacidade);
+
+  try {
+    const res = await fetch('/analisar', { method: 'POST', body: fd });
+    const data = await res.json();
+    renderizar(data);
+  } catch(e) {
+    renderErroGeral('Erro de comunicação com o servidor: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('btn-icon').outerHTML = `<span id="btn-icon">⚡</span>`;
+    document.getElementById('btn-text').textContent = 'Analisar PDFs';
+    atualizarBotao();
+  }
+}
+
+async function executarAnaliseDemo() {
+  const btn = document.getElementById('btn-demo');
+  const btnAnal = document.getElementById('btn-analisar');
+  const origText = btn.innerHTML;
+  
+  btn.disabled = true;
+  btnAnal.disabled = true;
+  btn.innerHTML = `<span>⏳</span><span>Carregando...</span>`;
+
+  try {
+    const res = await fetch('/analisar-demo');
+    const data = await res.json();
+    
+    // Simular que preencheu os status das caixas de upload
+    setStatus('pedido', 'ok', '✓ Emissão de Pedido de demonstração carregado');
+    setDzClass('pedido', 'file-ok');
+    setStatus('mrp', 'ok', '✓ MRP de demonstração carregado');
+    setDzClass('mrp', 'file-ok');
+    setStatus('capacidade', 'ok', '✓ Resumo de Capacidade de demonstração carregado');
+    setDzClass('capacidade', 'file-ok');
+    
+    renderizar(data);
+  } catch(e) {
+    renderErroGeral('Erro ao carregar dados de demonstração: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+    atualizarBotao();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Renderização
+══════════════════════════════════════════════════════════ */
+function renderizar(data) {
+  document.getElementById('empty-state').style.display = 'none';
+
+  // Erros de entrada
+  const elErros = document.getElementById('erros-entrada');
+  if (data.erros_entrada && data.erros_entrada.length > 0) {
+    elErros.innerHTML = '<strong>❌ Erro na leitura dos arquivos:</strong><br>' +
+      data.erros_entrada.map(e => `<div style="margin-top:6px">• <b>[${e.campo}]</b> ${e.mensagem}</div>`).join('');
+    elErros.classList.add('visible');
+  } else {
+    elErros.classList.remove('visible');
+  }
+
+  // Alertas globais de capacidade
+  const elAlertas = document.getElementById('alertas-globais');
+  if (data.alertas_globais && data.alertas_globais.length > 0) {
+    elAlertas.innerHTML = '<strong>⚠️ Alertas de Capacidade Geral:</strong><br>' +
+      data.alertas_globais.map(a => `<div style="margin-top:4px">${a}</div>`).join('');
+    elAlertas.classList.add('visible');
+  } else {
+    elAlertas.classList.remove('visible');
+  }
+
+  // Avisos de leitura (MRP parse_ok=False)
+  const elAvisos = document.getElementById('avisos-leitura');
+  if (data.avisos_leitura && data.avisos_leitura.length > 0) {
+    elAvisos.innerHTML = `<h3>⚠️ Avisos de Leitura (${data.avisos_leitura.length})</h3>` +
+      data.avisos_leitura.slice(0,5).map(a => `<div>• ${a}</div>`).join('') +
+      (data.avisos_leitura.length > 5 ? `<div style="margin-top:4px;font-style:italic">... e mais ${data.avisos_leitura.length - 5} aviso(s)</div>` : '');
+    elAvisos.classList.add('visible');
+  } else {
+    elAvisos.classList.remove('visible');
+  }
+
+  // Cards de pedido
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+
+  if (!data.pedidos || data.pedidos.length === 0) {
+    if (!data.erros_entrada?.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:20px 0">Nenhum pedido encontrado na análise.</p>';
+    }
+    return;
+  }
+
+  // Ordenar: VERMELHO → AMARELO → VERDE
+  const ordem = { VERMELHO: 0, AMARELO: 1, VERDE: 2 };
+  const pedidos = [...data.pedidos].sort((a, b) => (ordem[a.veredito] ?? 3) - (ordem[b.veredito] ?? 3));
+
+  container.innerHTML = `<div class="section-title">Resultado da Análise — ${pedidos.length} pedido(s)</div>`;
+
+  pedidos.forEach((p, i) => {
+    container.appendChild(criarCard(p, i));
+  });
+}
+
+function criarCard(p, idx) {
+  const div = document.createElement('div');
+  div.className = 'card fade-in';
+  div.style.animationDelay = `${idx * 0.05}s`;
+
+  const emojiV = { VERDE: '✅', AMARELO: '⚠️', VERMELHO: '❌' };
+  const qtdFmt = n => n != null ? n.toLocaleString('pt-BR') : '—';
+  const dateFmt = s => {
+    if (!s) return '—';
+    const [y, m, d] = s.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  // Determinar cor da sugestão
+  const sugCls = p.veredito === 'VERDE' ? 'verde' : p.veredito === 'VERMELHO' ? 'vermelho' : 'amarelo';
+
+  // Cronograma
+  let timelineHtml = '';
+  if (p.cronograma && p.cronograma.fases) {
+    timelineHtml = p.cronograma.fases.map(f => `
+      <div class="timeline-item">
+        <div class="tl-dot"></div>
+        <div class="tl-content">
+          <div class="tl-nome">${f.nome} <span style="color:var(--text-muted);font-size:11px">(${f.dias}d)</span></div>
+          <div class="tl-datas">${dateFmt(f.inicio)} → ${dateFmt(f.fim)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Capacidade
+  let capHtml = '';
+  if (p.capacidade && p.capacidade.semanas_relevantes) {
+    capHtml = p.capacidade.semanas_relevantes.map(s => {
+      const isAlvo = s.aass === p.semana_alvo;
+      const isSug = s.aass === p.capacidade.semana_sugerida;
+      const cls = s.mais_este <= s.limite ? 'cap-ok' : 'cap-fail';
+      return `<div class="cap-row ${isAlvo ? 'alvo' : ''}">
+        <span>Sem. ${s.aass}${isAlvo ? ' ★' : ''}${isSug ? ' 💡' : ''}</span>
+        <span>${qtdFmt(s.pend_atual)} → <b>${qtdFmt(s.mais_este)}</b></span>
+        <span class="cap-situacao ${cls}">${s.mais_este <= s.limite ? '✓ OK' : '✗ Cheio'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Insumos
+  let insHtml = '';
+  if (p.insumos && p.insumos.length > 0) {
+    insHtml = p.insumos.map(ins => {
+      const statusCls = ins.status === 'OK_ESTOQUE' ? 'tag-ok-estoque' :
+                        ins.status === 'OK_FUTURO' ? 'tag-ok-futuro' : 'tag-falta';
+      const statusLabel = ins.status === 'OK_ESTOQUE' ? '✓ Estoque' :
+                          ins.status === 'OK_FUTURO' ? '⏳ A caminho' : '✗ FALTA';
+      const dispStr = ins.disponivel_em ? ` — disponível ${dateFmt(ins.disponivel_em)}` : '';
+      const bloqStr = ins.bloqueante ? `<span class="insumo-tag tag-bloqueante">BLOQUEANTE</span>` : '';
+      return `<div class="insumo-row">
+        <div class="insumo-nome">${ins.descricao || ins.cod_insumo}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
+          <span class="insumo-tag ${statusCls}">${statusLabel}${dispStr}</span>
+          ${bloqStr}
+          <span class="insumo-tag" style="background:var(--surface2);color:var(--text-muted)">Fase: ${ins.fase_consumo}</span>
+        </div>
+        <div class="insumo-meta">Necessário: ${qtdFmt(ins.necessario)} | Estoque: ${qtdFmt(ins.aloc_estoque)}</div>
+      </div>`;
+    }).join('');
+  } else {
+    insHtml = '<div style="color:var(--text-muted);font-size:12px">Nenhum insumo encontrado no MRP para este artigo.</div>';
+  }
+
+  // Motivos
+  const motivosHtml = p.motivos && p.motivos.length > 0
+    ? `<ul class="motivos-list">${p.motivos.map(m => `<li>${m}</li>`).join('')}</ul>`
+    : '';
+
+  // Dados brutos
+  const brutosJson = JSON.stringify(p.dados_brutos || {}, null, 2);
+
+  div.innerHTML = `
+    <div class="card-header" onclick="toggleCard(this.closest('.card'))">
+      <div class="veredito-badge ${p.veredito}">${emojiV[p.veredito] || '?'}</div>
+      <div class="card-title">
+        <strong>Pedido ${p.numero_pedido} — ${p.descricao}</strong>
+        <span>Artigo ${p.artigo} | Cor ${p.cod_cor} ${p.nome_cor}</span>
+      </div>
+      <div class="card-meta">
+        <div class="meta-item">
+          <span class="val">${dateFmt(p.entrega_cliente ? p.entrega_cliente.split ? p.entrega_cliente : null : null)}</span>
+          <span class="lbl">Entrega</span>
+        </div>
+        <div class="meta-item">
+          <span class="val">${qtdFmt(p.qtde_pedido)}</span>
+          <span class="lbl">Peças</span>
+        </div>
+        <div class="meta-item">
+          <span class="val" style="color:${p.veredito==='VERDE'?'var(--green)':p.veredito==='AMARELO'?'var(--yellow)':'var(--red)'}">Sem. ${p.semana_alvo}</span>
+          <span class="lbl">Semana alvo</span>
+        </div>
+      </div>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="sugestao-box ${sugCls}">${p.sugestao || '—'}</div>
+      ${motivosHtml}
+      <div class="inner-sections">
+        <div class="inner-box">
+          <h4>📅 Cronograma Draft</h4>
+          <div class="timeline">${timelineHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}</div>
+          ${p.cronograma ? `<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Rota: ${p.cronograma.rota_detectada} | OF: ${qtdFmt(p.qtd_of)} peças (c/ buffer)</div>` : ''}
+        </div>
+        <div class="inner-box">
+          <h4>📊 Capacidade Semanal</h4>
+          ${capHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}
+          <div style="margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">
+            ${p.capacidade && p.capacidade.semana_sugerida ? `<div>💡 <b>Semana Sugerida:</b> Produzir na semana ${p.capacidade.semana_sugerida} (capacidade OK)</div>` : ''}
+            <div>★ <b>Semana Alvo:</b> Limite planejado (semana de entrega - 1)</div>
+          </div>
+        </div>
+      </div>
+      <div class="inner-box" style="margin-bottom:14px">
+        <h4>🧵 Insumos</h4>
+        ${insHtml}
+      </div>
+      <details class="brutos">
+        <summary>🔍 Dados brutos (auditoria)</summary>
+        <div class="brutos-content">${brutosJson}</div>
+      </details>
+    </div>
+  `;
+
+  return div;
+}
+
+function toggleCard(card) {
+  card.classList.toggle('expanded');
+}
+
+function renderErroGeral(msg) {
+  const el = document.getElementById('erros-entrada');
+  el.innerHTML = `<strong>❌ ${msg}</strong>`;
+  el.classList.add('visible');
+  document.getElementById('empty-state').style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Data de entrega: corrigir formato ISO
+══════════════════════════════════════════════════════════ */
+function fmtDataISO(val) {
+  if (!val) return '—';
+  if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const [y, m, d] = val.split('T')[0].split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return val;
+}
+// Patch criarCard para usar fmtDataISO corretamente
+// (entrega_cliente já é string ISO do servidor)
+const _origCriarCard = criarCard;
+window.criarCard = function(p, idx) {
+  p._entregaFmt = fmtDataISO(p.entrega_cliente);
+  return _origCriarCard(p, idx);
+};
+</script>
+</body>
+</html>
