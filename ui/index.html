@@ -137,7 +137,7 @@
       background: var(--red-bg);
     }
     .drop-zone input[type="file"] {
-      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+      display: none;
     }
     .dz-icon { font-size: 28px; margin-bottom: 8px; display: block; }
     .dz-label {
@@ -593,7 +593,10 @@
 
     <div id="erros-entrada"></div>
     <div id="alertas-globais"></div>
-    <div id="avisos-leitura"></div>
+    <details id="avisos-leitura" class="brutos" style="display:none; margin-bottom: 20px;">
+      <summary style="color:var(--yellow); font-size:13px; font-weight:600; cursor:pointer; user-select:none;">⚠️ Avisos de Reconciliação do MRP (Auditoria)</summary>
+      <div id="avisos-leitura-corpo" style="margin-top:8px; font-size:12px; color:var(--text-muted); line-height: 1.5;"></div>
+    </details>
     <div id="cards-container"></div>
   </div>
 
@@ -610,6 +613,12 @@ const STATUS_VALIDO = {};
    Drag & Drop
 ══════════════════════════════════════════════════════════ */
 document.querySelectorAll('.drop-zone').forEach(dz => {
+  // Clique na drop-zone aciona a abertura do diálogo de arquivo (essencial para celulares)
+  dz.addEventListener('click', e => {
+    const inp = dz.querySelector('input[type=file]');
+    if (inp) inp.click();
+  });
+
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => {
@@ -766,13 +775,12 @@ function renderizar(data) {
 
   // Avisos de leitura (MRP parse_ok=False)
   const elAvisos = document.getElementById('avisos-leitura');
+  const elAvisosCorpo = document.getElementById('avisos-leitura-corpo');
   if (data.avisos_leitura && data.avisos_leitura.length > 0) {
-    elAvisos.innerHTML = `<h3>⚠️ Avisos de Leitura (${data.avisos_leitura.length})</h3>` +
-      data.avisos_leitura.slice(0,5).map(a => `<div>• ${a}</div>`).join('') +
-      (data.avisos_leitura.length > 5 ? `<div style="margin-top:4px;font-style:italic">... e mais ${data.avisos_leitura.length - 5} aviso(s)</div>` : '');
-    elAvisos.classList.add('visible');
+    elAvisosCorpo.innerHTML = data.avisos_leitura.map(a => `<div>• ${a}</div>`).join('');
+    elAvisos.style.display = 'block';
   } else {
-    elAvisos.classList.remove('visible');
+    elAvisos.style.display = 'none';
   }
 
   // Cards de pedido

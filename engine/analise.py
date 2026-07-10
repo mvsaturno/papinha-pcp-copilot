@@ -217,10 +217,8 @@ def _decidir_veredito(
             )
             tem_bloqueante = True
         elif ins.status == "OK_FUTURO":
-            motivos.append(
-                f"Insumo a caminho: {ins.descricao} "
-                f"(disponível ~{formatar_data_br(ins.disponivel_em) if ins.disponivel_em else '?'})"
-            )
+            # Não adicionamos o texto aos motivos do topo para evitar poluição/redundância,
+            # pois já é listado com data e status na tabela de insumos abaixo.
             tem_alertas = True
 
     # Avisos de matching → alertas mas não bloqueantes necessariamente
