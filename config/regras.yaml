@@ -1,6 +1,9 @@
 geral:
   familia_analisada: magazine
-  semanas_antes_entrega_cliente: 1
+  semanas_antes_entrega_cliente: 2   # Entrega interna = semana do cliente − 2
+  semanas_autonomia_pcp: 3           # antecipação máxima sem autorização da gestão
+  permitir_consumir_margem: true     # semanas entre alvo+1 e semana_cliente−1 → viável c/ ressalva
+  estrategia_cronograma: jit         # jit (padrão) | asap (comportamento antigo)
   buffer_producao_pct: 7.0
   arredondamento: half_up          # half_up | ceil | floor
   horizonte_sinalizacao_dias: 90   # >90 dias → badge informativo

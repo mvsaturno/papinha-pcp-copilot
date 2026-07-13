@@ -126,6 +126,10 @@ def casar_com_mrp(
                 tecido_principal_encontrado = True
                 break
 
+        is_cor_divergente = False
+        if bloco.cod_cor and linha.cod_cor and bloco.cod_cor != linha.cod_cor:
+            is_cor_divergente = True
+
         insumo = MatchInsumo(
             cod_insumo=bloco.cod_insumo,
             descricao=bloco.descricao,
@@ -139,6 +143,7 @@ def casar_com_mrp(
             aloc_pend_tint=prod.aloc_pend_tint,
             aloc_tinturaria=prod.aloc_tinturaria,
             saldo=prod.saldo,
+            cor_divergente=is_cor_divergente,
         )
         insumos.append(insumo)
 

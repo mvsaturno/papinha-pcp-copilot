@@ -147,3 +147,33 @@ def _calcular_pcp_dias(
         return lt_compra + lt_tecelagem + lt_tinturaria  # 28 dias
 
     return pcp_padrao
+
+
+def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Cronograma:
+    """
+    Recalcula as datas do cronograma de trás para a frente para que termine na nova_data_fim.
+    Mantém as durações originais das fases.
+    """
+    if not crono.fases:
+        return crono
+
+    dias_folga = (nova_data_fim - crono.data_fim).days
+    
+    novas_fases = []
+    for f in crono.fases:
+        nova_inicio = f.inicio + timedelta(days=dias_folga)
+        nova_fim = f.fim + timedelta(days=dias_folga)
+        novas_fases.append(FaseCronograma(
+            nome=f.nome,
+            inicio=nova_inicio,
+            fim=nova_fim,
+            dias=f.dias
+        ))
+
+    crono.fases = novas_fases
+    crono.data_fim = nova_data_fim
+    crono.semana_fim_aass = semana_aass(nova_data_fim)
+    crono.folga_dias = dias_folga
+    crono.inicio_mais_tarde = novas_fases[0].inicio if novas_fases else None
+
+    return crono

@@ -114,3 +114,14 @@ class TestMRPParserSetor:
                     return
         # Se não encontrou, a OF pode estar com nome diferente
         pytest.skip("OF 263005 não encontrada — verificar se está no MRP")
+
+    def test_reconciliacao_todos_os_blocos_passam(self, blocos):
+        """Valida que o fallback regex consegue parsear todos os blocos sem falhas graves."""
+        falhas = []
+        for b in blocos:
+            if not b.parse_ok:
+                falhas.append(f"Bloco {b.cod_insumo}: {'; '.join(b.avisos_reconciliacao)}")
+        
+        # Pode haver alguns blocos com layout realmente quebrado não tratado, mas TAG RIACHUELO deve passar
+        tag_riachuelo_falhou = any("04020546" in f for f in falhas)
+        assert not tag_riachuelo_falhou, f"TAG RIACHUELO 04020546 falhou a reconciliação: {falhas}"

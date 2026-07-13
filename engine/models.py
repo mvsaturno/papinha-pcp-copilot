@@ -118,6 +118,7 @@ class MatchInsumo:
     disponivel_em: Optional[date] = None
     fase_consumo: str = "CORTE"
     bloqueante: bool = False
+    cor_divergente: bool = False
     avisos: list[str] = field(default_factory=list)
 
 
@@ -153,6 +154,8 @@ class Cronograma:
     pcp_dias: int = 21
     data_fim: Optional[date] = None
     semana_fim_aass: int = 0
+    inicio_mais_tarde: Optional[date] = None
+    folga_dias: int = 0
 
 
 # ──────────────────────────────────────────────

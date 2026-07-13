@@ -838,12 +838,17 @@ function criarCard(p, idx) {
   // Capacidade
   let capHtml = '';
   if (p.capacidade && p.capacidade.semanas_relevantes) {
-    capHtml = p.capacidade.semanas_relevantes.map(s => {
+    const minSem = Math.min(...p.capacidade.semanas_relevantes.map(s => s.aass));
+    const maxSem = Math.max(...p.capacidade.semanas_relevantes.map(s => s.aass));
+    const labelJanela = p.semana_alvo ? `<div style="font-size:12px; font-weight:600; margin-bottom: 8px; color:var(--text)">Janela de autonomia do PCP: semanas ${p.semana_alvo - 3} a ${p.semana_alvo} <span title="Antecipação acima de 3 semanas requer autorização da gestão" style="cursor:help">ℹ️</span></div>` : '';
+    
+    capHtml = labelJanela + p.capacidade.semanas_relevantes.map(s => {
       const isAlvo = s.aass === p.semana_alvo;
       const isSug = s.aass === p.capacidade.semana_sugerida;
+      const isOciosa = s.ociosa; // flag que vira da api na sprint 2
       const cls = s.mais_este <= s.limite ? 'cap-ok' : 'cap-fail';
       return `<div class="cap-row ${isAlvo ? 'alvo' : ''}">
-        <span>Sem. ${s.aass}${isAlvo ? ' ★' : ''}${isSug ? ' 💡' : ''}</span>
+        <span>Sem. ${s.aass}${isAlvo ? ' ★' : ''}${isSug ? (isOciosa ? '' : ' 💡') : ''}${isOciosa ? ' 💡 ociosa' : ''}</span>
         <span>${qtdFmt(s.pend_atual)} → <b>${qtdFmt(s.mais_este)}</b></span>
         <span class="cap-situacao ${cls}">${s.mais_este <= s.limite ? '✓ OK' : '✗ Cheio'}</span>
       </div>`;
@@ -860,11 +865,13 @@ function criarCard(p, idx) {
                           ins.status === 'OK_FUTURO' ? '⏳ A caminho' : '✗ FALTA';
       const dispStr = ins.disponivel_em ? ` — disponível ${dateFmt(ins.disponivel_em)}` : '';
       const bloqStr = ins.bloqueante ? `<span class="insumo-tag tag-bloqueante">BLOQUEANTE</span>` : '';
+      const divCor = ins.cor_divergente ? `<span class="insumo-tag" style="background:var(--red-dim);color:var(--red);border-color:var(--red);font-weight:600">⚠️ Cor Divergente (${ins.nome_cor})</span>` : '';
       return `<div class="insumo-row">
         <div class="insumo-nome">${ins.descricao || ins.cod_insumo}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
           <span class="insumo-tag ${statusCls}">${statusLabel}${dispStr}</span>
           ${bloqStr}
+          ${divCor}
           <span class="insumo-tag" style="background:var(--surface2);color:var(--text-muted)">Fase: ${ins.fase_consumo}</span>
         </div>
         <div class="insumo-meta">Necessário: ${qtdFmt(ins.necessario)} | Estoque: ${qtdFmt(ins.aloc_estoque)}</div>
@@ -919,7 +926,7 @@ function criarCard(p, idx) {
           ${capHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}
           <div style="margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">
             ${p.capacidade && p.capacidade.semana_sugerida ? `<div>💡 <b>Semana Sugerida:</b> Produzir na semana ${p.capacidade.semana_sugerida} (capacidade OK)</div>` : ''}
-            <div>★ <b>Semana Alvo:</b> Limite planejado (semana de entrega - 1)</div>
+            <div>★ <b>Semana Alvo:</b> entrega interna planejada (semana solicitada pelo cliente − 2)</div>
           </div>
         </div>
       </div>

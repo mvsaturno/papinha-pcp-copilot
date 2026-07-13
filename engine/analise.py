@@ -20,7 +20,7 @@ from engine.models import (
     ResultadoAnalise,
 )
 from engine.matching import casar_com_mrp
-from engine.cronograma import montar_cronograma
+from engine.cronograma import montar_cronograma, ajustar_cronograma_backward
 from engine.insumos import avaliar_insumos
 from engine.capacidade import alertas_globais_capacidade, verificar_capacidade_pedido
 from parsers.comum import (
@@ -98,7 +98,13 @@ def _analisar_linha(
     # 5. Checagem de capacidade
     analise_cap = verificar_capacidade_pedido(qtd_of, semana_alvo, semana_minima, cap, cfg)
 
-    # 6. Veredito (seção 3.8)
+    # 5.5 Ajustar cronograma para backward scheduling (JIT) se aplicável
+    estrategia = cfg["geral"].get("estrategia_cronograma", "jit")
+    if estrategia == "jit" and analise_cap.semana_sugerida is not None:
+        fim_producao = sexta_da_semana(analise_cap.semana_sugerida)
+        cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
+
+    # 6. Veredito (seção 3.8 do Sprint 2)
     veredito, motivos, sugestao, semana_sug = _decidir_veredito(
         pedido, linha, match, cronograma, insumos_avaliados, analise_cap,
         semana_alvo, semana_minima, qtd_of, cap, cfg
@@ -136,6 +142,8 @@ def _analisar_linha(
         "match_confianca": match.confianca,
         "rota": cronograma.rota_detectada,
         "pcp_dias": cronograma.pcp_dias,
+        "folga_dias": cronograma.folga_dias,
+        "inicio_mais_tarde": formatar_data_br(cronograma.inicio_mais_tarde) if cronograma.inicio_mais_tarde else None,
         "avisos_pedido": pedido.avisos_parsing,
     }
 
@@ -228,29 +236,41 @@ def _decidir_veredito(
             if av not in motivos:
                 motivos.append(av)
 
-    # Sugestão de semana
+    # Sugestão de semana e lógica da janela
     semana_sug = analise_cap.semana_sugerida
-
-    # Gerar sugestão textual
-    sugestao = _montar_sugestao(semana_sug, semana_alvo, pedido.entrega, cfg)
-
-    # Veredito final
-    if semana_sug is None or semana_sug > semana_alvo:
-        # VERMELHO: nenhuma semana ≤ alvo disponível (seção 3.8 do ROADMAP)
+    autonomia = cfg["geral"].get("semanas_autonomia_pcp", 3)
+    
+    # Determinar a "zona" do veredito (Sprint 2)
+    semana_cliente = aass_add(semana_alvo, cfg["geral"].get("semanas_antes_entrega_cliente", 2))
+    
+    if semana_sug is None or semana_sug >= semana_cliente:
         veredito = "VERMELHO"
         if not motivos:
-            motivos.append("Data de entrega inviável com as condições atuais")
-    elif tem_bloqueante or tem_alertas or match.confianca == "BAIXA":
-        # AMARELO: existe semana viável mas com ressalvas
-        veredito = "AMARELO"
-        if not motivos:
-            motivos.append("Pedido viável com ressalvas — revisar alertas")
+            motivos.append(f"Inviável na data — propor entrega na semana {aass_add(semana_sug or semana_cliente, 2)}")
     else:
-        # VERDE: tudo OK
-        veredito = "VERDE"
-        if not motivos:
-            motivos.append("Pedido viável — todos os insumos disponíveis e capacidade OK")
+        # Está em alguma das zonas candidatas viáveis
+        if (semana_alvo - autonomia) <= semana_sug <= semana_alvo:
+            # Janela
+            veredito = "VERDE"
+            if semana_sug < semana_alvo:
+                motivos.append(f"Antecipação de {semana_alvo - semana_sug} sem., dentro da autonomia")
+        elif semana_alvo < semana_sug < semana_cliente:
+            # Extra 2
+            veredito = "AMARELO"
+            motivos.append("Viável, mas consome a margem interna de segurança (entrega−2) — decisão do PCP")
+        else:
+            # Extra 1 (antes da janela)
+            veredito = "AMARELO"
+            motivos.append(f"Viável apenas com antecipação de {semana_alvo - semana_sug} semanas — REQUER AUTORIZAÇÃO DA GESTÃO")
+            
+        if tem_bloqueante or tem_alertas or match.confianca == "BAIXA":
+            if veredito == "VERDE":
+                veredito = "AMARELO"  # rebaixado por ressalvas
 
+        if veredito == "VERDE" and not motivos:
+            motivos.append(f"Produzir para terminar na semana {semana_sug} (JIT)")
+
+    sugestao = _montar_sugestao(semana_sug, semana_alvo, pedido.entrega, cfg)
     return veredito, motivos, sugestao, semana_sug
 
 

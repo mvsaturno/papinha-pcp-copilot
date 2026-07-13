@@ -115,8 +115,8 @@ class TestEngine:
 
     def test_veredito_pedido_102622_viavel(self, dados_analise, config):
         """
-        Veredito com hoje=07/07/2026, pedido 102622 (entrega 05/10/2026 -> semana 2641, alvo 2640):
-        Semana_fim do draft ≈ semana(07/07+65d=10/09) = 2637 <= 2640
+        Veredito com hoje=07/07/2026, pedido 102622 (entrega 05/10/2026 -> semana 2641, alvo 2639):
+        Semana_fim do draft ≈ semana(07/07+65d=10/09) = 2637 <= 2639
         Capacidade 2637 (11.433 + 1.282 <= 80.000) -> VIÁVEL (com ressalvas pela cor/tecido) -> AMARELO ou VERDE.
         """
         pedidos, mrp, cap = dados_analise
@@ -125,6 +125,25 @@ class TestEngine:
 
         card = next(c for c in res.pedidos if c.numero_pedido == "102622")
         assert card.veredito in ("AMARELO", "VERDE")
-        assert card.semana_alvo == 2640
-        assert card.cronograma.semana_fim_aass == 2637
+        assert card.semana_alvo == 2639
+        assert card.cronograma.semana_fim_aass == 2639
         assert card.capacidade.cabe_no_alvo is True
+
+    def test_veredito_pedido_102559_jit(self, dados_analise, config):
+        """
+        Pedido 102559 (Regata, entrega 04/11 -> alvo 2643)
+        Teste de JIT: fim=23/10/2026 (sexta de 2643), inicio_ideal=19/08/2026, folga ≈ 43 dias.
+        """
+        pedidos, mrp, cap = dados_analise
+        hoje = date(2026, 7, 7)
+        res = analisar(pedidos, mrp, cap, hoje, config)
+
+        card = next(c for c in res.pedidos if c.numero_pedido == "102559")
+        assert card.semana_alvo == 2643
+        assert card.veredito in ("VERDE", "AMARELO")
+        
+        crono = card.cronograma
+        assert crono.semana_fim_aass == 2643
+        assert crono.data_fim == date(2026, 10, 23)
+        assert crono.inicio_mais_tarde == date(2026, 8, 19)
+        assert crono.folga_dias == 43

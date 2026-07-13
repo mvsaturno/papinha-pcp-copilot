@@ -65,12 +65,12 @@ def parse_mrp(pdf_bytes: bytes) -> list[BlocoInsumo]:
         if _RE_INSUMO_AGR.match(texto):
             if bloco_atual:
                 blocos.append(_finalizar_bloco(bloco_atual))
-            bloco_atual = _parse_linha_insumo(texto, words, colunas_x)
+            bloco_atual = _parse_linha_insumo(texto, linha_info, colunas_x)
             continue
 
         # Linha de produto (OF 6 dígitos + artigo 7 dígitos)
         if _RE_PRODUTO.match(texto) and bloco_atual is not None:
-            prod = _parse_linha_produto(texto, words, colunas_x)
+            prod = _parse_linha_produto(texto, linha_info, colunas_x)
             if prod:
                 bloco_atual["produtos"].append(prod)
             continue
@@ -120,9 +120,20 @@ def _extrair_linhas_com_coords(pdf_bytes: bytes) -> list[dict]:
             if grupo_atual:
                 grupos.append(sorted(grupo_atual, key=lambda x: x["x0"]))
 
+            chars = page.chars
+
             for grupo in grupos:
                 texto = " ".join(w["text"] for w in grupo)
-                linhas_result.append({"texto": texto, "words": grupo})
+                # Associar caracteres a esta linha
+                top_min = min(w["top"] for w in grupo) - 2.0
+                bot_max = max(w["bottom"] for w in grupo) + 2.0
+                chars_linha = [c for c in chars if top_min <= c["top"] <= bot_max]
+                
+                linhas_result.append({
+                    "texto": texto,
+                    "words": grupo,
+                    "chars": chars_linha
+                })
 
     return linhas_result
 
@@ -204,12 +215,14 @@ def _extrair_x_colunas_cabecalho(words: list[dict]) -> dict[str, tuple[float, fl
     return mapa
 
 
-def _extrair_numeros_por_coluna(words: list[dict], colunas_x: dict) -> dict[str, float]:
+def _extrair_numeros_por_coluna(linha_info: dict, colunas_x: dict) -> dict[str, float]:
     """
     Extrai os números de uma linha atribuindo cada um à coluna por posição X.
     Se não houver mapa de colunas, extrai todos os números em ordem.
+    Usa um fallback com regex caso haja números colados.
     """
     resultado: dict[str, float] = {c: 0.0 for c in COLUNAS_ORDEM}
+    words = linha_info.get("words", [])
 
     if not colunas_x:
         # Sem mapa de colunas — extrair números em ordem e mapear sequencialmente
@@ -221,18 +234,37 @@ def _extrair_numeros_por_coluna(words: list[dict], colunas_x: dict) -> dict[str,
     colunas_ordenadas = sorted(colunas_x.items(), key=lambda kv: kv[1][0])
 
     for w in words:
-        if not _e_numero_br(w["text"]):
+        txt = w.get("text", "")
+        if not _e_numero_br(txt):
             continue
         x_centro = (w["x0"] + w["x1"]) / 2
-        for nome, (x_min, x_max) in colunas_ordenadas:
+        for i, (nome, (x_min, x_max)) in enumerate(colunas_ordenadas):
             if x_min <= x_centro <= x_max:
                 try:
-                    resultado[nome] = parse_num_br(w["text"])
+                    resultado[nome] = parse_num_br(txt)
                 except ValueError:
-                    pass
+                    # Fallback para string colada
+                    separados = _desambiguar_numeros_colados(txt)
+                    for j, s in enumerate(separados):
+                        idx_col = i + j
+                        if idx_col < len(colunas_ordenadas):
+                            nome_col = colunas_ordenadas[idx_col][0]
+                            try:
+                                resultado[nome_col] = parse_num_br(s)
+                            except ValueError:
+                                pass
                 break
 
     return resultado
+
+
+def _desambiguar_numeros_colados(texto: str) -> list[str]:
+    """
+    Tenta separar números aglutinados pelo parser (ex: '11.460,00064.415,000').
+    Procura blocos terminados em ,XX ou ,XXX.
+    """
+    matches = re.finditer(r'([\d.]+(?:,\d{2,3}))', texto)
+    return [m.group(1) for m in matches]
 
 
 def _extrair_todos_numeros(words: list[dict]) -> list[float]:
@@ -243,7 +275,12 @@ def _extrair_todos_numeros(words: list[dict]) -> list[float]:
             try:
                 nums.append(parse_num_br(w["text"]))
             except ValueError:
-                pass
+                separados = _desambiguar_numeros_colados(w["text"])
+                for s in separados:
+                    try:
+                        nums.append(parse_num_br(s))
+                    except ValueError:
+                        pass
     return nums
 
 
@@ -253,7 +290,7 @@ def _e_numero_br(s: str) -> bool:
     return bool(re.match(r"^[\d.,]+$", s) and any(c.isdigit() for c in s))
 
 
-def _parse_linha_insumo(texto: str, words: list[dict], colunas_x: dict) -> dict:
+def _parse_linha_insumo(texto: str, linha_info: dict, colunas_x: dict) -> dict:
     """
     Parseia uma linha de insumo agregado.
     Formato: "XXXXXXXX DESCRICAO... UN COD_COR - NOME_COR ... N1 N2 N3 N4 N5 N6 N7"
@@ -301,8 +338,8 @@ def _parse_linha_insumo(texto: str, words: list[dict], colunas_x: dict) -> dict:
         if not un:
             descricao = resto
 
-    # Extrair números por coluna
-    nums = _extrair_numeros_por_coluna(words, colunas_x)
+    # Extrair números por coluna via bucketing de chars
+    nums = _extrair_numeros_por_coluna(linha_info, colunas_x)
 
     return {
         "cod_insumo": cod_insumo,
@@ -321,7 +358,7 @@ def _parse_linha_insumo(texto: str, words: list[dict], colunas_x: dict) -> dict:
     }
 
 
-def _parse_linha_produto(texto: str, words: list[dict], colunas_x: dict) -> Optional[dict]:
+def _parse_linha_produto(texto: str, linha_info: dict, colunas_x: dict) -> Optional[dict]:
     """
     Parseia uma linha de produto (OF).
     Formato: "XXXXXX YYYYYYY DESCRICAO AASS SS - SETOR N1 N2 N3 N4 N5"
@@ -353,8 +390,8 @@ def _parse_linha_produto(texto: str, words: list[dict], colunas_x: dict) -> Opti
         setor_atual = f"{setor_cod} - {setor_nome}"
         descricao_prod = resto[:m_setor.start()].strip()
 
-    # Extrair números por coluna (produtos têm até 5 colunas: Consumo, Estoque, Compra, Tecelagem, PendTint)
-    nums = _extrair_numeros_por_coluna(words, colunas_x)
+    # Extrair números por coluna via bucketing
+    nums = _extrair_numeros_por_coluna(linha_info, colunas_x)
 
     return {
         "of": of,
@@ -438,7 +475,7 @@ def _reconciliar(bloco: BlocoInsumo) -> None:
     )
     if abs(saldo_calc - bloco.saldo) > _TOL_RECONCIL:
         avisos.append(
-            f"Saldo calc={saldo_calc:.3f} != lido={bloco.saldo:.3f} "
+            f"⚠️ ERRO DE SALDO: o sistema calculou {saldo_calc:.3f} mas o PDF reporta {bloco.saldo:.3f} "
             f"(dif={abs(saldo_calc - bloco.saldo):.3f})"
         )
 
@@ -447,7 +484,7 @@ def _reconciliar(bloco: BlocoInsumo) -> None:
         soma_prod = sum(p.consumo for p in bloco.produtos)
         if abs(soma_prod - bloco.consumo) > _TOL_RECONCIL:
             avisos.append(
-                f"Consumo={bloco.consumo:.3f} != soma_produtos={soma_prod:.3f}"
+                f"⚠️ ATENÇÃO: a soma dos produtos ({soma_prod:.3f}) diverge do consumo total lido ({bloco.consumo:.3f})"
             )
 
     if avisos:

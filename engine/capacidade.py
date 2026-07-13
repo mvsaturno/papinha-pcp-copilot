@@ -59,32 +59,64 @@ def verificar_capacidade_pedido(
     cfg: dict,
 ) -> AnaliseCapacidade:
     """
-    Verifica se o pedido cabe na semana alvo e sugere alternativas.
-    Conforme seção 3.8 do ROADMAP.
+    Verifica se o pedido cabe na semana alvo e sugere alternativas priorizando JIT.
+    Conforme seção 3.8 do ROADMAP (Sprint 2).
     """
     limite = cfg["capacidade"]["limite_total_semana"]
     semanas_ausentes_zero = cfg["capacidade"].get("semanas_ausentes_sao_zero", True)
+    
+    autonomia = cfg["geral"].get("semanas_autonomia_pcp", 3)
+    permitir_margem = cfg["geral"].get("permitir_consumir_margem", True)
+    semanas_antes = cfg["geral"].get("semanas_antes_entrega_cliente", 2)
+    ociosidade_alerta_pct = cfg["capacidade"].get("ociosidade_alerta_pct", 40)
+    semana_cliente = aass_add(semana_alvo, semanas_antes)
 
     def pend(s: int) -> int:
         if semanas_ausentes_zero:
             return cap.periodos.get(s, 0)
         return cap.periodos.get(s, 0)
 
-    # Encontrar semana sugerida (seção 3.8, lógica de candidatos)
+    # Encontrar semana sugerida priorizando Backward (JIT)
     semana_sugerida = None
+    
+    # helper para criar listas de semanas
+    def range_semanas(start, end, step=-1):
+        # se start/end estiverem fora de ordem para o step, retorna lista vazia
+        lst = []
+        curr = start
+        if step == -1:
+            while curr >= end:
+                lst.append(curr)
+                curr = aass_add(curr, -1)
+        else:
+            while curr <= end:
+                lst.append(curr)
+                curr = aass_add(curr, 1)
+        return lst
 
-    # a) Menor W no intervalo [semana_minima .. semana_alvo] com capacidade OK
-    s = semana_minima
-    while s <= semana_alvo:
-        if (pend(s) + qtd_of) <= limite:
+    # Construir janelas
+    # 1. Janela de autonomia [alvo, alvo-1, ..., alvo-autonomia]
+    janela = range_semanas(semana_alvo, aass_add(semana_alvo, -autonomia), step=-1)
+    
+    # 2. Extra 2: consome margem [alvo+1 .. semana_cliente-1]
+    extra_2 = range_semanas(aass_add(semana_alvo, 1), aass_add(semana_cliente, -1), step=1) if permitir_margem else []
+    
+    # 3. Extra 1: antecipação além da autonomia [alvo-autonomia-1 .. semana_minima]
+    extra_1 = range_semanas(aass_add(semana_alvo, -autonomia-1), semana_minima, step=-1)
+    
+    # Ordem de busca
+    candidatas = janela + extra_2 + extra_1
+    
+    for s in candidatas:
+        if s >= semana_minima and (pend(s) + qtd_of) <= limite:
             semana_sugerida = s
             break
-        s = aass_add(s, 1)
-
-    # b) Se nenhuma: menor W > alvo com capacidade OK e W >= semana_minima
+            
+    # Se não coube em nenhuma (ou não achou), procura a primeira livre após alvo
     if semana_sugerida is None:
-        s = max(aass_add(semana_alvo, 1), semana_minima)
-        limite_busca = aass_add(semana_alvo, 12)  # até 12 semanas à frente
+        # Procurar >= semana_cliente
+        s = max(semana_cliente, semana_minima)
+        limite_busca = aass_add(semana_alvo, 12)
         while s <= limite_busca:
             if (pend(s) + qtd_of) <= limite:
                 semana_sugerida = s
@@ -92,22 +124,26 @@ def verificar_capacidade_pedido(
             s = aass_add(s, 1)
 
     # Calcular intervalo dinâmico de semanas para exibição na UI
-    # Garante que a semana física mínima e a semana sugerida estejam na listagem
-    ref_sug = semana_sugerida if semana_sugerida is not None else semana_alvo
-    start_sem = min(semana_minima, ref_sug, aass_add(semana_alvo, -2))
-    end_sem = max(ref_sug, aass_add(semana_alvo, 3))
+    # Exibe a janela de autonomia toda e até alvo+1 se permitida a margem
+    start_sem = min(semana_minima, aass_add(semana_alvo, -autonomia), semana_sugerida or semana_alvo)
+    end_sem = max(aass_add(semana_alvo, 1 if permitir_margem else 0), semana_sugerida or semana_alvo)
 
     semanas_exibir = []
     curr = start_sem
     while curr <= end_sem:
         p = pend(curr)
         situacao = "✅ OK" if (p + qtd_of) <= limite else "❌ Estourado"
+        # Calcular ociosidade na janela (pct livre)
+        pct_livre = ((limite - p) / limite) * 100 if limite > 0 else 0
+        is_ociosa = pct_livre > ociosidade_alerta_pct and (aass_add(semana_alvo, -autonomia) <= curr <= semana_alvo)
+
         semanas_exibir.append({
             "aass": curr,
             "pend_atual": p,
             "mais_este": p + qtd_of,
             "limite": limite,
             "situacao": situacao,
+            "ociosa": is_ociosa,
         })
         curr = aass_add(curr, 1)
 
