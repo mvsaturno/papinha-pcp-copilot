@@ -270,6 +270,8 @@ def _msg_erro_tipo(ident: Identificacao, campo: str) -> str:
     nome_esperado = nome_esperado_map.get(campo.lower(), tipo_esperado)
 
     if ident.tipo == TipoPDF.NAO_PDF or ident.tipo == TipoPDF.PDF_VAZIO:
+        if ident.mensagem and "exporte" in ident.mensagem.lower():
+            return ident.mensagem
         return (
             "Este arquivo não é um PDF válido ou está vazio. "
             "Exporte novamente do Excia em formato PDF."
