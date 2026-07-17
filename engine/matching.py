@@ -39,12 +39,19 @@ def casar_com_mrp(
 
     # Encontrar todos os produtos do MRP com este artigo
     produtos_encontrados: list[tuple[ProdutoMRP, BlocoInsumo]] = []
+    total_produtos_mrp = 0
+    
     for bloco in mrp:
+        total_produtos_mrp += len(bloco.produtos)
         for prod in bloco.produtos:
             if prod.cod_artigo == artigo:
                 produtos_encontrados.append((prod, bloco))
 
-    if not produtos_encontrados:
+    # FALLBACK: Se o MRP não tiver NENHUM produto detalhado (é o PPCP Textil / Resumido)
+    # tentamos casar os insumos pela cor do pedido
+    is_resumo = (total_produtos_mrp == 0 and len(mrp) > 0)
+
+    if not produtos_encontrados and not is_resumo:
         return MatchPedido(
             cod_artigo=artigo,
             of="",
@@ -56,6 +63,10 @@ def casar_com_mrp(
             ],
             tecido_principal_encontrado=False,
         )
+
+    # Se for um resumo, faremos uma lógica dedicada
+    if is_resumo:
+        return _casar_com_mrp_resumido(linha, mrp, cfg)
 
     # Agrupar por OF (um artigo pode ter várias OFs)
     ofs_por_artigo: dict[str, list[tuple[ProdutoMRP, BlocoInsumo]]] = {}
@@ -157,6 +168,63 @@ def casar_com_mrp(
         cod_artigo=artigo,
         of=of_match,
         confianca=confianca,
+        insumos=insumos,
+        avisos=avisos,
+        tecido_principal_encontrado=tecido_principal_encontrado,
+    )
+
+
+def _casar_com_mrp_resumido(linha: LinhaPedido, mrp: list[BlocoInsumo], cfg: dict) -> MatchPedido:
+    """
+    Lógica de fallback quando o MRP anexado é o 'PPCP Textil' (sem OFs detalhadas).
+    Assumimos que o MRP foi gerado *filtrado* para a OF deste pedido.
+    Filtramos os insumos pela cor da linha atual (ou sem cor/UNICO).
+    """
+    insumos: list[MatchInsumo] = []
+    avisos = [
+        "⚠️ Relatório resumido ('PPCP Textil') detectado. "
+        "Os insumos foram vinculados de forma agregada ao pedido, "
+        "sem distinção por OF ou Artigo."
+    ]
+    
+    tecido_principal_encontrado = False
+    keywords_tecido = cfg.get("tecido_principal_keywords", ["MALHA", "RIBANA"])
+
+    for bloco in mrp:
+        # Verificar match de cor:
+        # Se o bloco tem uma cor definida (diferente de 'UNICO' ou '0')
+        # e é diferente da cor da linha, pulamos (não pertence a essa variante de cor)
+        is_unico = bloco.cod_cor == "0" or bloco.nome_cor == "UNICO" or not bloco.cod_cor
+        if not is_unico and linha.cod_cor and bloco.cod_cor != linha.cod_cor:
+            continue
+
+        desc_upper = bloco.descricao.upper()
+        for kw in keywords_tecido:
+            if kw in desc_upper:
+                tecido_principal_encontrado = True
+                break
+
+        insumo = MatchInsumo(
+            cod_insumo=bloco.cod_insumo,
+            descricao=bloco.descricao,
+            un=bloco.un,
+            cod_cor=bloco.cod_cor,
+            nome_cor=bloco.nome_cor,
+            necessario=bloco.consumo, # Usa o consumo total do bloco
+            aloc_estoque=bloco.estoque,
+            aloc_compra=bloco.compra,
+            aloc_tecelagem=bloco.tecelagem,
+            aloc_pend_tint=bloco.pend_tint,
+            aloc_tinturaria=bloco.tinturaria,
+            saldo=bloco.saldo,
+            cor_divergente=False, # Como não temos OF específica, não marcamos divergência aqui
+        )
+        insumos.append(insumo)
+
+    return MatchPedido(
+        cod_artigo=linha.artigo,
+        of="Múltiplas" if len(insumos) > 0 else "",
+        confianca="MEDIA",
         insumos=insumos,
         avisos=avisos,
         tecido_principal_encontrado=tecido_principal_encontrado,

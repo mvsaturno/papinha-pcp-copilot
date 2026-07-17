@@ -99,20 +99,13 @@ def _detectar_tipo(pdf, texto: str, pdf_bytes: bytes) -> Identificacao:
         )
 
     # ── MRP ────────────────────────────────────────────────────────────────
-    # Rejeitar ativamente a versão resumida do PPCP Textil
-    if "ppcp textil" in texto or ("wpcpmatcons" in texto and "wpcpmatcons3" not in texto):
-        return Identificacao(
-            tipo=TipoPDF.NAO_PDF,
-            confianca="ALTA",
-            mensagem="Você exportou a versão resumida do MRP ('PPCP Textil'). Por favor, exporte a versão DETALHADA ('wPCPMatCons3') que contém as OFs."
-        )
-
     # Primária: 'relatório de consumos - detalhado' OU 'wpcpmatcons3'
     # Secundária: cabeçalho com 'consumo' + 'estoque' + 'saldo'
     if ("relatório de consumos - detalhado" in texto or
             "relatorio de consumos - detalhado" in texto or
             "wpcpmatcons3" in texto or
-            "relatório de consumos" in texto):
+            "relatório de consumos" in texto or
+            "ppcp textil" in texto):
         if ("consumo" in texto and "estoque" in texto and "saldo" in texto):
             return Identificacao(
                 tipo=TipoPDF.MRP,
