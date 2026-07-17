@@ -29,7 +29,7 @@ _RE_NUMERO = re.compile(r"Numero:\s*(\d+)", re.IGNORECASE)
 _RE_PED_CLIENTE = re.compile(r"Ped\.\s*Cliente:\s*(\d+)", re.IGNORECASE)
 _RE_EMISSAO = re.compile(r"Emiss[aã]o:\s*([\d/]+)", re.IGNORECASE)
 _RE_ENTREGA = re.compile(r"Entrega:\s*([\d/]+)", re.IGNORECASE)
-_RE_CLIENTE = re.compile(r"Cliente:\s*(.+?)(?=\s{2,}|CNPJ|$)", re.IGNORECASE)
+_RE_CLIENTE = re.compile(r"(?:^|\n)Cliente:\s*(.+?)(?=\s{2,}|\n|\r|CNPJ|$)", re.IGNORECASE)
 _RE_COLECAO = re.compile(r"Cole[çc][aã]o:\s*(.+?)(?=\s{2,}|$)", re.IGNORECASE)
 
 # Tamanhos conhecidos para filtrar do cabeçalho
@@ -43,11 +43,11 @@ _TAMANHOS_VALIDOS = re.compile(
 # Observação: o PDF usa apenas 1 espaço entre descrição e código de cor!
 _RE_LINHA_ITEM = re.compile(
     r"^(\d{1,3})\s+"          # ordem
-    r"(\d{7})\s*/\s*"         # artigo (7 dígitos) + '/'
+    r"(\d{7})(?:\s*/)?\s+"    # artigo (7 dígitos) + opcional '/'
     r"(.+?)\s+"               # descrição (espaço simples é suficiente)
     r"(\d{5})\s*[-–]\s*"     # código cor (5 dígitos) + ' - '
     r"(.+?)\s+"               # nome da cor
-    r"((?:[\d.,]+\s*)+)$",   # números (tamanhos + total)
+    r"([\d.,\s]+(?:[a-zA-Z]*[\d.,\s]*)*)$", # números (tamanhos + total + extras)
     re.IGNORECASE
 )
 
