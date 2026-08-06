@@ -18,12 +18,13 @@ from typing import Optional
 class LinhaPedido:
     """Uma linha de item dentro de um pedido (artigo + cor + grade)."""
     ordem: str
-    artigo: str           # código do artigo (ex: '4104040')
+    codigo: str           # código do artigo (ex: '4104040')
     descricao: str
-    cod_cor: str
-    nome_cor: str
-    grade: dict[str, int]  # {'PP': 319, 'P': 641, ...}
-    qtde_total: int
+    cor: str
+    desc_cor: str
+    grade: dict[str, float]  # {'2': 319.0, '3': 641.0, ...}
+    qtde_total: float
+    dt_entrega_item: Optional[date] = None
 
 
 @dataclass

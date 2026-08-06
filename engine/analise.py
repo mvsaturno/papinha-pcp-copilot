@@ -129,7 +129,7 @@ def _analisar_linha(
     dados_brutos = {
         "pedido_numero": pedido.numero,
         "ped_cliente": pedido.ped_cliente,
-        "artigo": linha.artigo,
+        "artigo": linha.codigo,
         "descricao": linha.descricao,
         "grade": linha.grade,
         "qtde_total": linha.qtde_total,
@@ -149,10 +149,10 @@ def _analisar_linha(
 
     return CardPedido(
         numero_pedido=pedido.numero,
-        artigo=linha.artigo,
+        artigo=linha.codigo,
         descricao=linha.descricao,
-        cod_cor=linha.cod_cor,
-        nome_cor=linha.nome_cor,
+        cod_cor=linha.cor,
+        nome_cor=linha.desc_cor,
         qtde_pedido=linha.qtde_total,
         qtd_of=qtd_of,
         entrega_cliente=pedido.entrega,

@@ -228,12 +228,12 @@ def _parse_linha_item_unica(
 
     return LinhaPedido(
         ordem=ordem,
-        artigo=artigo,
+        codigo=artigo,
         descricao=descricao,
-        cod_cor=cod_cor,
-        nome_cor=nome_cor,
-        grade=grade,
-        qtde_total=total,
+        cor=cod_cor,
+        desc_cor=nome_cor,
+        grade={k: float(v) for k, v in grade.items()},
+        qtde_total=float(total),
     )
 
 
@@ -280,12 +280,12 @@ def _parse_linhas_item_alternativo(bloco: str, numero: str, avisos: list) -> lis
 
         linhas.append(LinhaPedido(
             ordem="1",
-            artigo=artigo,
+            codigo=artigo,
             descricao="",
-            cod_cor=cod_cor,
-            nome_cor="",
-            grade=grade,
-            qtde_total=total,
+            cor=cod_cor,
+            desc_cor="",
+            grade={k: float(v) for k, v in grade.items()},
+            qtde_total=float(total),
         ))
 
     return linhas

@@ -27,7 +27,7 @@ def casar_com_mrp(
     Encontra os insumos do MRP correspondentes a uma linha de pedido.
     Conforme seção 3.7: chave = código do artigo; valida quantidade; trata divergência de cor.
     """
-    artigo = linha.artigo
+    codigo = linha.codigo
     qtd_of = arredondar(linha.qtde_total * (1 + cfg["geral"]["buffer_producao_pct"] / 100),
                         cfg["geral"]["arredondamento"])
     tol_pct = cfg["geral"]["tolerancia_match_qtd_pct"] / 100
@@ -44,7 +44,7 @@ def casar_com_mrp(
     for bloco in mrp:
         total_produtos_mrp += len(bloco.produtos)
         for prod in bloco.produtos:
-            if prod.cod_artigo == artigo:
+            if prod.cod_artigo == codigo:
                 produtos_encontrados.append((prod, bloco))
 
     # FALLBACK: Se o MRP não tiver NENHUM produto detalhado (é o PPCP Textil / Resumido)
@@ -53,12 +53,12 @@ def casar_com_mrp(
 
     if not produtos_encontrados and not is_resumo:
         return MatchPedido(
-            cod_artigo=artigo,
+            cod_artigo=codigo,
             of="",
             confianca="BAIXA",
             insumos=[],
             avisos=[
-                f"Artigo {artigo} não encontrado no MRP — gere o Relatório de Consumos "
+                f"Artigo {codigo} não encontrado no MRP — gere o Relatório de Consumos "
                 f"incluindo a OF deste pedido e reenvie"
             ],
             tecido_principal_encontrado=False,
@@ -118,9 +118,9 @@ def casar_com_mrp(
 
     # Verificar divergência de cor
     for prod, bloco in prod_list:
-        if bloco.cod_cor and linha.cod_cor and bloco.cod_cor != linha.cod_cor:
+        if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
             avisos.append(
-                f"Divergência de código de cor: pedido ({linha.cod_cor} {linha.nome_cor}) "
+                f"Divergência de código de cor: pedido ({linha.cor} {linha.desc_cor}) "
                 f"vs MRP ({bloco.cod_cor} {bloco.nome_cor}) — confirmar de-para de cores no Excia"
             )
             break  # Uma mensagem por OF é suficiente
@@ -138,7 +138,7 @@ def casar_com_mrp(
                 break
 
         is_cor_divergente = False
-        if bloco.cod_cor and linha.cod_cor and bloco.cod_cor != linha.cod_cor:
+        if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
             is_cor_divergente = True
 
         insumo = MatchInsumo(
@@ -165,7 +165,7 @@ def casar_com_mrp(
         )
 
     return MatchPedido(
-        cod_artigo=artigo,
+        cod_artigo=codigo,
         of=of_match,
         confianca=confianca,
         insumos=insumos,
@@ -195,7 +195,7 @@ def _casar_com_mrp_resumido(linha: LinhaPedido, mrp: list[BlocoInsumo], cfg: dic
         # Se o bloco tem uma cor definida (diferente de 'UNICO' ou '0')
         # e é diferente da cor da linha, pulamos (não pertence a essa variante de cor)
         is_unico = bloco.cod_cor == "0" or bloco.nome_cor == "UNICO" or not bloco.cod_cor
-        if not is_unico and linha.cod_cor and bloco.cod_cor != linha.cod_cor:
+        if not is_unico and linha.cor and bloco.cod_cor != linha.cor:
             continue
 
         desc_upper = bloco.descricao.upper()
@@ -222,7 +222,7 @@ def _casar_com_mrp_resumido(linha: LinhaPedido, mrp: list[BlocoInsumo], cfg: dic
         insumos.append(insumo)
 
     return MatchPedido(
-        cod_artigo=linha.artigo,
+        cod_artigo=linha.codigo,
         of="Múltiplas" if len(insumos) > 0 else "",
         confianca="MEDIA",
         insumos=insumos,

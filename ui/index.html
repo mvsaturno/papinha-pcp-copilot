@@ -543,45 +543,23 @@
   </header>
 
   <!-- Upload Panel -->
+  <!-- Input Panel -->
   <div class="upload-panel">
-    <h2>📂 Enviar PDFs do Excia</h2>
-    <div class="upload-grid">
-      <!-- Pedido -->
-      <div class="drop-zone" id="dz-pedido" data-campo="pedido">
-        <input type="file" id="file-pedido" accept=".pdf" onchange="onFileChange(this,'pedido')"/>
-        <span class="dz-icon">📋</span>
-        <div class="dz-label">Emissão de Pedido</div>
-        <div class="dz-sub">wEspelhoPF</div>
-        <div class="dz-status" id="status-pedido"></div>
-      </div>
-      <!-- MRP -->
-      <div class="drop-zone" id="dz-mrp" data-campo="mrp">
-        <input type="file" id="file-mrp" accept=".pdf" onchange="onFileChange(this,'mrp')"/>
-        <span class="dz-icon">🔗</span>
-        <div class="dz-label">MRP — Consumos</div>
-        <div class="dz-sub">wPCPMatCons3 (Detalhado)</div>
-        <div class="dz-status" id="status-mrp"></div>
-      </div>
-      <!-- Capacidade -->
-      <div class="drop-zone" id="dz-capacidade" data-campo="capacidade">
-        <input type="file" id="file-capacidade" accept=".pdf" onchange="onFileChange(this,'capacidade')"/>
-        <span class="dz-icon">📊</span>
-        <div class="dz-label">Resumo de Capacidade</div>
-        <div class="dz-sub">Resumo por Período</div>
-        <div class="dz-status" id="status-capacidade"></div>
-      </div>
+    <h2>🔍 Consultar Pedido</h2>
+    <div style="display:flex;gap:10px;margin:20px 0;">
+      <input type="text" id="input-numero-pedido" placeholder="Ex: 103447" style="flex:2; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg); color: var(--text); font-size: 16px;">
+      <button id="btn-analisar-api" onclick="executarAnaliseAPI()" style="flex:1">
+        <span id="btn-icon-api">⚡</span>
+        <span id="btn-text-api">Analisar via API</span>
+      </button>
     </div>
     <div style="display:flex;gap:10px">
-      <button id="btn-analisar" disabled onclick="executarAnalise()" style="flex:2">
-        <span id="btn-icon">⚡</span>
-        <span id="btn-text">Analisar PDFs</span>
-      </button>
       <button id="btn-demo" onclick="executarAnaliseDemo()" style="flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text-muted);font-size:12px;font-weight:600;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s">
         <span>💡</span>
-        <span>Carregar Fixtures (Demo)</span>
+        <span>Carregar Fixtures (Demo offline)</span>
       </button>
     </div>
-    <p class="hint">Arraste os PDFs para as áreas acima ou clique para selecionar. A ferramenta é somente leitura — nenhum dado é gravado.</p>
+    <p class="hint">A ferramenta se conectará ao Excia para obter o pedido e calcular a capacidade necessária baseada nas Ordens de Produção vigentes.</p>
   </div>
 
   <!-- Resultados -->
@@ -688,31 +666,35 @@ function atualizarBotao() {
 /* ═══════════════════════════════════════════════════════════
    Análise
 ══════════════════════════════════════════════════════════ */
-async function executarAnalise() {
-  const btn = document.getElementById('btn-analisar');
-  const icon = document.getElementById('btn-icon');
-  const text = document.getElementById('btn-text');
+async function executarAnaliseAPI() {
+  const inputNumero = document.getElementById('input-numero-pedido');
+  const btn = document.getElementById('btn-analisar-api');
+  const icon = document.getElementById('btn-icon-api');
+  const text = document.getElementById('btn-text-api');
+  
+  const numero = inputNumero.value.trim();
+  if (!numero) {
+    alert("Digite o número do pedido.");
+    return;
+  }
 
   btn.disabled = true;
-  icon.outerHTML = `<div class="spinner" id="btn-icon"></div>`;
-  text.textContent = 'Analisando...';
+  icon.outerHTML = `<div class="spinner" id="btn-icon-api"></div>`;
+  text.textContent = 'Analisando via API...';
 
   const fd = new FormData();
-  fd.append('pedido', FILES.pedido);
-  fd.append('mrp', FILES.mrp);
-  fd.append('capacidade', FILES.capacidade);
+  fd.append('numero_pedido', numero);
 
   try {
-    const res = await fetch('/analisar', { method: 'POST', body: fd });
+    const res = await fetch('/analisar-pedido', { method: 'POST', body: fd });
     const data = await res.json();
     renderizar(data);
   } catch(e) {
     renderErroGeral('Erro de comunicação com o servidor: ' + e.message);
   } finally {
     btn.disabled = false;
-    document.getElementById('btn-icon').outerHTML = `<span id="btn-icon">⚡</span>`;
-    document.getElementById('btn-text').textContent = 'Analisar PDFs';
-    atualizarBotao();
+    document.getElementById('btn-icon-api').outerHTML = `<span id="btn-icon-api">⚡</span>`;
+    document.getElementById('btn-text-api').textContent = 'Analisar via API';
   }
 }
 

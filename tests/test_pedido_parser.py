@@ -42,13 +42,13 @@ class TestPedidoParser:
         """102559: artigo 4104040."""
         p = pedidos_por_numero["102559"]
         assert len(p.linhas) == 1
-        assert p.linhas[0].artigo == "4104040"
+        assert p.linhas[0].codigo == "4104040"
 
     def test_pedido_102559_cor(self, pedidos_por_numero):
         """102559: cor 00088 VERDE MUSGO."""
         l = pedidos_por_numero["102559"].linhas[0]
-        assert l.cod_cor == "00088"
-        assert "VERDE MUSGO" in l.nome_cor.upper()
+        assert l.cor == "00088"
+        assert "VERDE MUSGO" in l.desc_cor.upper()
 
     def test_pedido_102559_grade(self, pedidos_por_numero):
         """102559: grade {PP:319, P:641, M:728, G:634, GG:379}."""
@@ -94,7 +94,7 @@ class TestPedidoParser:
             for l in p.linhas:
                 soma = sum(l.grade.values())
                 assert soma == l.qtde_total, (
-                    f"Pedido {p.numero} artigo {l.artigo}: "
+                    f"Pedido {p.numero} artigo {l.codigo}: "
                     f"soma={soma} ≠ total={l.qtde_total}"
                 )
 
@@ -109,6 +109,6 @@ class TestPedidoParser:
         """102562: artigo 4104046, entrega 03/11/2026, total 3000."""
         p = pedidos_por_numero["102562"]
         l = p.linhas[0]
-        assert l.artigo == "4104046"
+        assert l.codigo == "4104046"
         assert l.qtde_total == 3000
         assert p.entrega == date(2026, 11, 3)

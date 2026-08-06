@@ -15,7 +15,7 @@ from typing import Optional
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +26,7 @@ from parsers.mrp_parser import parse_mrp
 from parsers.capacidade_parser import parse_capacidade
 from engine.models import ResultadoAnalise, TipoPDF
 from engine.analise import analisar
+from engine.orquestrador import analisar_pedido_por_numero
 
 # ── Configuração ─────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -187,6 +188,22 @@ async def endpoint_analisar(
         resultado = analisar(pedidos_parsed, mrp_parsed, cap_parsed, date.today(), CONFIG, resultado)
 
     except Exception as exc:
+        resultado.avisos_leitura.append(f"Erro inesperado no servidor: {exc}")
+
+    return JSONResponse(content=_serializar(resultado))
+
+
+# ── Endpoint principal da Sprint 4 (Análise por Número) ──────────────────────
+@app.post("/analisar-pedido")
+async def endpoint_analisar_pedido(numero_pedido: str = Form(...)):
+    """
+    Novo fluxo da Sprint 4: recebe o número do pedido e resolve tudo via API.
+    """
+    try:
+        resultado = analisar_pedido_por_numero(numero_pedido, CONFIG)
+    except Exception as exc:
+        hoje = date.today()
+        resultado = ResultadoAnalise(timestamp=hoje.isoformat(), data_analise=hoje)
         resultado.avisos_leitura.append(f"Erro inesperado no servidor: {exc}")
 
     return JSONResponse(content=_serializar(resultado))
