@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from engine.models import Cronograma, FaseCronograma, MatchPedido, LinhaPedido
-from parsers.comum import semana_aass
+from parsers.comum import semana_aass, recuar_dias_uteis_excia, avancar_dias_uteis_excia
 from api.fluxo_adapter import FluxoAdapter
 
 
@@ -72,10 +72,12 @@ def montar_cronograma(
             if "QUAL" in n or "PRE" in n:
                 return fases_dias.get("QUAL_APLIQUE", 1)
             return fases_dias.get("APLIQUE", 8)
+        if "ESTAMPARIA NUCA" in n or "ESTAMPA NUCA" in n:
+            return fases_dias.get("ESTAMPARIA_NUCA", 4)
         if "ESTAMPARIA" in n or "ESTAMPA" in n:
             if "QUAL" in n or "PRE" in n:
                 return fases_dias.get("QUAL_ESTAMPARIA", 1)
-            return fases_dias.get("ESTAMPARIA_NUCA", 4)
+            return fases_dias.get("ESTAMPARIA", 5)
         if "ACAB" in n:
             return fases_dias.get("ACAB_COST", 4)
         if "PASSADORIA" in n:
@@ -107,18 +109,13 @@ def montar_cronograma(
                 d = overrides.get(nome_fase, fases_dias.get(nome_fase, 1))
             fases_rota.append((nome_fase, d))
 
-    # 4. Calcular cronograma principal
+    # 4. Calcular cronograma principal forward
     def _calcular_fases_forward(lista_fases_dias, dt_inicio):
         fases_calc = []
         cur = dt_inicio
         for nome_f, dias in lista_fases_dias:
             ini = cur
-            fim = ini
-            dias_add = 0
-            while dias_add < dias:
-                fim += timedelta(days=1)
-                if fim.weekday() < 5:
-                    dias_add += 1
+            fim = avancar_dias_uteis_excia(ini, dias)
             fases_calc.append(FaseCronograma(nome=nome_f, inicio=ini, fim=fim, dias=dias))
             cur = fim
         return fases_calc, cur
@@ -252,14 +249,9 @@ def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Crono
     def _calcular_backward(fases_list, dt_fim):
         novas = []
         cur = dt_fim
-        for f in reversed(fases_list):
+        for idx, f in enumerate(reversed(fases_list)):
             fim = cur
-            inicio = fim
-            dias_sub = 0
-            while dias_sub < f.dias:
-                inicio -= timedelta(days=1)
-                if inicio.weekday() < 5:
-                    dias_sub += 1
+            inicio = recuar_dias_uteis_excia(fim, f.dias, eh_ultima=(idx == 0))
             novas.append(FaseCronograma(
                 nome=f.nome,
                 inicio=inicio,

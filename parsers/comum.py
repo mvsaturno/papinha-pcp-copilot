@@ -133,6 +133,71 @@ def quarta_da_semana(aass: int) -> date:
     return quarta
 
 
+# ──────────────────────────────────────────────
+# Feriados Nacionais Brasileiros
+# ──────────────────────────────────────────────
+
+FERIADOS_NACIONAIS = {
+    # 2025
+    date(2025, 1, 1),   date(2025, 3, 3),   date(2025, 3, 4),
+    date(2025, 4, 18),  date(2025, 4, 21),  date(2025, 5, 1),
+    date(2025, 6, 19),  date(2025, 9, 7),   date(2025, 10, 12),
+    date(2025, 11, 2),  date(2025, 11, 15), date(2025, 11, 20),
+    date(2025, 12, 25),
+    # 2026
+    date(2026, 1, 1),   date(2026, 2, 16),  date(2026, 2, 17),
+    date(2026, 4, 3),   date(2026, 4, 21),  date(2026, 5, 1),
+    date(2026, 6, 4),   date(2026, 9, 7),   date(2026, 10, 12),
+    date(2026, 11, 2),  date(2026, 11, 15), date(2026, 11, 20),
+    date(2026, 12, 25),
+    # 2027
+    date(2027, 1, 1),   date(2027, 2, 8),   date(2027, 2, 9),
+    date(2027, 3, 26),  date(2027, 4, 21),  date(2027, 5, 1),
+    date(2027, 5, 27),  date(2027, 9, 7),   date(2027, 10, 12),
+    date(2027, 11, 2),  date(2027, 11, 15), date(2027, 11, 20),
+    date(2027, 12, 25),
+}
+
+def eh_dia_util(d: date) -> bool:
+    """Verifica se uma data é dia útil (segunda a sexta e fora de feriados nacionais)."""
+    return d.weekday() < 5 and d not in FERIADOS_NACIONAIS
+
+def recuar_dias_uteis_excia(data_saida: date, duracao_dias: int, eh_ultima: bool = False) -> date:
+    """
+    Calcula a data de entrada no padrão do Excia a partir da data de saída.
+    No Excia, a data de saída de uma etapa é a data de entrada da etapa seguinte.
+    Para a última etapa (Embalagem), o próprio dia da saída é o último dia trabalhado.
+    Para as etapas anteriores, os dias trabalhados são os dias anteriores até a entrada.
+    """
+    if duracao_dias <= 0:
+        return data_saida
+    cur = data_saida
+    dias_contados = 0
+    if eh_ultima:
+        if eh_dia_util(cur):
+            dias_contados = 1
+            if duracao_dias == 1:
+                return cur
+    while True:
+        cur -= timedelta(days=1)
+        if eh_dia_util(cur):
+            dias_contados += 1
+            if dias_contados >= duracao_dias:
+                return cur
+
+def avancar_dias_uteis_excia(data_entrada: date, duracao_dias: int) -> date:
+    """Avança N dias úteis a partir da data de entrada considerando feriados."""
+    if duracao_dias <= 0:
+        return data_entrada
+    cur = data_entrada
+    dias_contados = 0
+    while dias_contados < duracao_dias:
+        cur += timedelta(days=1)
+        if eh_dia_util(cur):
+            dias_contados += 1
+    return cur
+
+
 def aass_add(aass: int, n_semanas: int) -> int:
     """
     Soma n_semanas ao período AASS, cruzando ano corretamente.
