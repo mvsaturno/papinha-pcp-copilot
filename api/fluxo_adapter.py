@@ -6,38 +6,68 @@ class FluxoAdapter:
         self.client = client or ExciaAPIClient()
         self._cache = {} # Cache in memory to avoid querying the same route multiple times per run
 
+    def buscar_todas_partes_produto(self, codigo_produto: str) -> list[dict]:
+        """
+        Consulta a API ParteProdutoLista e busca os fluxos e fases de todas as partes do artigo.
+        Retorna lista de partes: [{'parte': '01', 'descricao': 'SUPERIOR', 'fluxo': '329', 'principal': True, 'fases': [...]}, ...]
+        """
+        if not codigo_produto:
+            return []
+
+        cache_key = f"produto_partes_{codigo_produto}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        try:
+            response = self.client.get("ParteProdutoLista", params={"codigo": codigo_produto})
+            if not response or not isinstance(response, list):
+                self._cache[cache_key] = []
+                return []
+
+            partes = []
+            for p in response:
+                fid = str(p.get("fluxo", "")).strip()
+                if not fid:
+                    continue
+                fases = self.buscar_fases(fid) or []
+                partes.append({
+                    "parte": str(p.get("parte", "")).strip(),
+                    "descricao": str(p.get("descricao", "")).strip().upper(),
+                    "fluxo": fid,
+                    "principal": str(p.get("principal", "")).upper() == "S",
+                    "fases": fases,
+                })
+
+            self._cache[cache_key] = partes
+            return partes
+        except Exception:
+            self._cache[cache_key] = []
+            return []
+
     def buscar_fluxo_do_produto(self, codigo_produto: str) -> Optional[str]:
         """
-        Consulta a API ParteProdutoLista para descobrir o código do fluxo atrelado ao artigo.
-        Retorna o código do fluxo (ex: '340') ou None se não encontrar.
+        Consulta a API ParteProdutoLista para descobrir o código do fluxo principal do artigo.
+        Prioriza a parte marcada com principal='S' ou '00' ou '01'.
         """
         if not codigo_produto:
             return None
-            
-        cache_key = f"produto_fluxo_{codigo_produto}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-            
-        try:
-            response = self.client.get("ParteProdutoLista", params={"codigo": codigo_produto})
-            if response and isinstance(response, list) and len(response) > 0:
-                # Vamos pegar a parte '00' (principal) se houver várias, ou a primeira que tiver fluxo
-                fluxo = None
-                for parte in response:
-                    if parte.get("fluxo"):
-                        fluxo = str(parte.get("fluxo"))
-                        if parte.get("parte") == "00":
-                            break # Encontramos a parte principal com fluxo
-                
-                if fluxo:
-                    self._cache[cache_key] = fluxo
-                    return fluxo
-                    
-            self._cache[cache_key] = None
+
+        partes = self.buscar_todas_partes_produto(codigo_produto)
+        if not partes:
             return None
-        except Exception:
-            self._cache[cache_key] = None
-            return None
+
+        # 1. Procurar parte principal='S'
+        for p in partes:
+            if p.get("principal"):
+                return p["fluxo"]
+
+        # 2. Procurar parte '00' ou '01'
+        for p in partes:
+            if p.get("parte") in ("00", "01"):
+                return p["fluxo"]
+
+        # 3. Fallback: primeira parte válida
+        return partes[0]["fluxo"]
 
     def buscar_fases(self, codigo_fluxo: str) -> Optional[list[str]]:
         """

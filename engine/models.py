@@ -167,6 +167,9 @@ class Cronograma:
     semana_fim_aass: int = 0
     inicio_mais_tarde: Optional[date] = None
     folga_dias: int = 0
+    # Múltiplas partes (Superior, Inferior, Acessórios, Estampa)
+    cronogramas_partes: dict[str, list[FaseCronograma]] = field(default_factory=dict)
+    partes_info: list[dict] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -220,6 +223,9 @@ class CardPedido:
     avisos_flags: list[str] = field(default_factory=list)
     dados_brutos: dict = field(default_factory=dict)  # para <details> de auditoria
     qtde_faturada: int = 0
+    # Múltiplas partes (Superior, Inferior, Acessórios, Estampa)
+    cronogramas_partes: dict[str, list[dict]] = field(default_factory=dict)
+    partes_info: list[dict] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────

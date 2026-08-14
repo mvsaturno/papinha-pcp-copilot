@@ -33,15 +33,18 @@ def montar_cronograma(
     # 1. Calcular duração da fase PCP (dinâmica — seção 3.5)
     pcp_dias = _calcular_pcp_dias(match, fases_dias, lt_futuro, cfg)
 
-    # 2. Obter código do fluxo via API ParteProdutoLista
-    fluxo_inferido = getattr(linha, "fluxo_id", None)
+    # 2. Obter partes e códigos de fluxo via API ParteProdutoLista
     fluxo_adapter = FluxoAdapter()
-    
-    if not fluxo_inferido and linha.codigo:
+    partes_produto = []
+    if linha.codigo:
         try:
-            fluxo_inferido = fluxo_adapter.buscar_fluxo_do_produto(linha.codigo)
+            partes_produto = fluxo_adapter.buscar_todas_partes_produto(linha.codigo)
         except Exception:
             pass
+
+    fluxo_inferido = getattr(linha, "fluxo_id", None)
+    if not fluxo_inferido and partes_produto:
+        fluxo_inferido = fluxo_adapter.buscar_fluxo_do_produto(linha.codigo)
 
     # 3. Detectar rota dinâmica pela API
     fases_dinamicas = None
@@ -104,26 +107,43 @@ def montar_cronograma(
                 d = overrides.get(nome_fase, fases_dias.get(nome_fase, 1))
             fases_rota.append((nome_fase, d))
 
-    # 4. Calcular cronograma
-    fases: list[FaseCronograma] = []
-    cursor = hoje
+    # 4. Calcular cronograma principal
+    def _calcular_fases_forward(lista_fases_dias, dt_inicio):
+        fases_calc = []
+        cur = dt_inicio
+        for nome_f, dias in lista_fases_dias:
+            ini = cur
+            fim = ini
+            dias_add = 0
+            while dias_add < dias:
+                fim += timedelta(days=1)
+                if fim.weekday() < 5:
+                    dias_add += 1
+            fases_calc.append(FaseCronograma(nome=nome_f, inicio=ini, fim=fim, dias=dias))
+            cur = fim
+        return fases_calc, cur
 
-    for nome_fase, dias in fases_rota:
-        inicio = cursor
-        
-        # Adicionar dias úteis
-        fim = inicio
-        dias_add = 0
-        while dias_add < dias:
-            fim += timedelta(days=1)
-            if fim.weekday() < 5:  # seg a sex
-                dias_add += 1
-                
-        fases.append(FaseCronograma(nome=nome_fase, inicio=inicio, fim=fim, dias=dias))
-        cursor = fim
-
-    data_fim = cursor
+    fases, data_fim = _calcular_fases_forward(fases_rota, hoje)
     semana_fim = semana_aass(data_fim)
+
+    # 5. Calcular cronogramas de cada parte (se houver múltiplas)
+    cronos_partes: dict[str, list[FaseCronograma]] = {}
+    partes_info_list = []
+
+    for p in partes_produto:
+        p_desc = p.get("descricao") or f"PARTE {p.get('parte')}"
+        p_fases_nomes = p.get("fases", [])
+        if not p_fases_nomes:
+            continue
+        p_fases_dias = [(fn, _obter_dias_fase(fn)) for fn in p_fases_nomes]
+        p_fases_calc, _ = _calcular_fases_forward(p_fases_dias, hoje)
+        cronos_partes[p_desc] = p_fases_calc
+        partes_info_list.append({
+            "parte": p.get("parte"),
+            "descricao": p_desc,
+            "fluxo": p.get("fluxo"),
+            "principal": p.get("principal", False),
+        })
 
     return Cronograma(
         fases=fases,
@@ -131,6 +151,8 @@ def montar_cronograma(
         pcp_dias=pcp_dias,
         data_fim=data_fim,
         semana_fim_aass=semana_fim,
+        cronogramas_partes=cronos_partes,
+        partes_info=partes_info_list,
     )
 
 
@@ -220,36 +242,44 @@ def _calcular_pcp_dias(
 def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Cronograma:
     """
     Recalcula as datas do cronograma de trás para a frente para que termine na nova_data_fim.
-    Mantém as durações originais das fases (apenas dias úteis).
+    Mantém as durações originais das fases (apenas dias úteis), aplicando a todas as partes.
     """
     if not crono.fases:
         return crono
 
     dias_folga = (nova_data_fim - crono.data_fim).days
-    
-    novas_fases = []
-    cursor = nova_data_fim
-    
-    for f in reversed(crono.fases):
-        fim = cursor
-        inicio = fim
-        dias_sub = 0
-        while dias_sub < f.dias:
-            inicio -= timedelta(days=1)
-            if inicio.weekday() < 5:  # seg a sex
-                dias_sub += 1
-                
-        novas_fases.append(FaseCronograma(
-            nome=f.nome,
-            inicio=inicio,
-            fim=fim,
-            dias=f.dias
-        ))
-        cursor = inicio
 
-    novas_fases.reverse()
+    def _calcular_backward(fases_list, dt_fim):
+        novas = []
+        cur = dt_fim
+        for f in reversed(fases_list):
+            fim = cur
+            inicio = fim
+            dias_sub = 0
+            while dias_sub < f.dias:
+                inicio -= timedelta(days=1)
+                if inicio.weekday() < 5:
+                    dias_sub += 1
+            novas.append(FaseCronograma(
+                nome=f.nome,
+                inicio=inicio,
+                fim=fim,
+                dias=f.dias
+            ))
+            cur = inicio
+        novas.reverse()
+        return novas
+
+    # 1. Ajustar fases da rota principal
+    novas_fases = _calcular_backward(crono.fases, nova_data_fim)
+
+    # 2. Ajustar fases de cada uma das partes (Superior, Inferior, Acessórios, Estampa)
+    novos_cronos_partes = {}
+    for p_nome, p_fases in crono.cronogramas_partes.items():
+        novos_cronos_partes[p_nome] = _calcular_backward(p_fases, nova_data_fim)
 
     crono.fases = novas_fases
+    crono.cronogramas_partes = novos_cronos_partes
     crono.data_fim = nova_data_fim
     crono.semana_fim_aass = semana_aass(nova_data_fim)
     crono.folga_dias = dias_folga
