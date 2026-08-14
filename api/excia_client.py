@@ -22,46 +22,45 @@ class ExciaAPIClient:
             "Token": EXCIA_TOKEN
         })
 
-    def get(self, endpoint, params=None, max_retries=3):
+    def get(self, endpoint, params=None, max_retries=2, timeout=60):
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         
         for attempt in range(max_retries):
             try:
-                response = self.session.get(url, params=params, timeout=15)
+                response = self.session.get(url, params=params, timeout=timeout)
                 
                 # Se for 429 Too Many Requests, respeitamos o Rate Limit
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
                     if retry_after:
-                        # Retry-After normalmente vem em milissegundos conforme a doc (embora RFC HTTP seja segundos)
-                        # A documentação da Excia diz: "Tempo de espera necessário para tentar novamente, em milissegundos"
                         wait_seconds = int(retry_after) / 1000.0
                     else:
-                        wait_seconds = 1.0  # fallback
-
-                    print(f"[Rate Limit] Aguardando {wait_seconds}s...")
+                        wait_seconds = 1.5
                     time.sleep(wait_seconds)
                     continue
-
+                
                 response.raise_for_status()
-                
-                # A API retorna sempre array JSON pelo que consta na doc
                 return response.json()
-
-            except HTTPError as e:
-                # Se for 400 e a mensagem indicar que não há registros,
-                # retornamos lista vazia em vez de falhar. (Protege paginação infinita)
-                if response.status_code == 400 and "Nenhum registro encontrado" in response.text:
-                    return []
                 
-                # Vamos logar e levantar exceção se não for 429 ou se acabarem os retries
-                if response.status_code != 429 or attempt == max_retries - 1:
-                    print(f"Erro ao chamar {url}: {response.text}")
+            except HTTPError as e:
+                # Tratamento de códigos de erro
+                if response.status_code == 400:
+                    try:
+                        err_json = response.json()
+                        err_msg = err_json[0].get("method-error-400") if isinstance(err_json, list) and err_json else ""
+                        if "Token inválido" in err_msg:
+                            raise ValueError("Token da API Excia inválido ou não autorizado.")
+                    except (ValueError, IndexError):
+                        pass
+                if attempt == max_retries - 1:
                     raise e
+                time.sleep(1.0)
+                
             except RequestException as e:
                 if attempt == max_retries - 1:
-                    print(f"Erro de rede ao chamar {url}: {str(e)}")
+                    print(f"Erro de rede ao chamar {url}: {e}")
                     raise e
-                time.sleep(1.0) # Espera simples por erro de rede genérico
+                time.sleep(1.5)
+ # Espera simples por erro de rede genérico
 
         return None

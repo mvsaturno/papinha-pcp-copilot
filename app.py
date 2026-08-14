@@ -38,6 +38,22 @@ with open(CONFIG_PATH, encoding="utf-8") as f:
 # ── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Copiloto PCP — Papinha Baby", version="1.0.0-mvp")
 
+import threading
+from api.capacidade_adapter import CapacidadeAdapter
+
+@app.on_event("startup")
+async def startup_event():
+    """Pré-aquece o cache de capacidade em background para garantir resposta instantânea."""
+    def _aquecer():
+        try:
+            print("[Startup] Pré-aquecendo cache de capacidade da Excia em background...")
+            CapacidadeAdapter().buscar_capacidade(CONFIG)
+            print("[Startup] Cache de capacidade pronto e aquecido!")
+        except Exception as e:
+            print(f"[Startup] Aviso no pré-aquecimento de capacidade: {e}")
+
+    threading.Thread(target=_aquecer, daemon=True).start()
+
 
 # ── Servir o HTML ───────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)

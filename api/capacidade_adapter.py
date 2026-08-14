@@ -24,11 +24,11 @@ import time
 from parsers.comum import semana_aass, aass_add
 
 
-# Cache global (5 minutos)
+# Cache global (30 minutos para evitar chamadas pesadas repetitivas ao ERP)
 _CACHE_CAPACIDADE: Optional[CapacidadeSemanal] = None
 _CACHE_MAPA_PEDIDO_OF: dict[str, list[dict]] = {}
 _CACHE_TIMESTAMP: float = 0
-CACHE_TTL: int = 300
+CACHE_TTL: int = 1800
 
 
 class CapacidadeAdapter:
@@ -47,7 +47,7 @@ class CapacidadeAdapter:
         1. Filtra as OPs dos clientes de magazines configurados em regras.yaml (codcli_magazines).
         2. Computa as operações de facção multiplicando conjuntos pelo número de partes ativas (ex: superior + inferior).
         3. Indexa o mapa {pedido: [ofs]} para permitir rastreamento imediato de OFs vinculadas a pedidos.
-        4. Usa cache de 5 minutos para otimizar tempo de resposta.
+        4. Usa cache de 30 minutos para otimizar tempo de resposta.
         """
         global _CACHE_CAPACIDADE, _CACHE_TIMESTAMP, _CACHE_MAPA_PEDIDO_OF
 
@@ -71,7 +71,7 @@ class CapacidadeAdapter:
         periodos_dict: dict[int, int] = {}
         novo_mapa_ofs: dict[str, list[dict]] = {}
         pagina = 1
-        max_paginas = 25
+        max_paginas = 20
 
         while pagina <= max_paginas:
             params = {
@@ -79,8 +79,14 @@ class CapacidadeAdapter:
                 "situacao": "P",
                 "pagina": pagina,
             }
-            resp = self.client.get("OPLista", params=params)
-            response = resp if isinstance(resp, list) else []
+            try:
+                resp = self.client.get("OPLista", params=params, timeout=45)
+                response = resp if isinstance(resp, list) else []
+            except Exception as e:
+                # Se falhar em páginas avançadas, aproveita o que já foi lido
+                if periodos_dict:
+                    break
+                raise e
 
             if not response:
                 break
