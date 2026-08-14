@@ -25,6 +25,8 @@ class LinhaPedido:
     grade: dict[str, float]  # {'2': 319.0, '3': 641.0, ...}
     qtde_total: float
     dt_entrega_item: Optional[date] = None
+    fluxo_id: Optional[str] = None
+    qtde_faturada: float = 0.0
 
 
 @dataclass
@@ -128,7 +130,15 @@ class MatchPedido:
     """Resultado do matching de uma linha de pedido com o MRP."""
     cod_artigo: str
     of: str
-    confianca: str         # ALTA | MEDIA | BAIXA
+    confianca: str         # Detecção e rastreamento de OF oficial no Excia
+    of_emitida: bool = False
+    numero_of: Optional[str] = None
+    semana_of_oficial: Optional[int] = None
+    dt_emissao_of: Optional[date] = None
+    setor_atual_of: Optional[str] = None
+    qtde_of_oficial: Optional[int] = None
+
+    # Resultado da Regra 3 (Insumos)
     insumos: list[MatchInsumo] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
     tecido_principal_encontrado: bool = False
@@ -199,9 +209,17 @@ class CardPedido:
     capacidade: Optional[AnaliseCapacidade]
     sugestao: str
     sugestao_semana: Optional[int]
+    # Rastreamento de OF emitida no Excia
+    of_emitida: bool = False
+    numero_of: Optional[str] = None
+    semana_of_oficial: Optional[int] = None
+    dt_emissao_of: Optional[date] = None
+    setor_atual_of: Optional[str] = None
+    qtde_of_oficial: Optional[int] = None
     horizonte_longo: bool = False
     avisos_flags: list[str] = field(default_factory=list)
     dados_brutos: dict = field(default_factory=dict)  # para <details> de auditoria
+    qtde_faturada: int = 0
 
 
 # ──────────────────────────────────────────────

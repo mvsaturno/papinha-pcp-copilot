@@ -27,7 +27,7 @@ class ExciaAPIClient:
         
         for attempt in range(max_retries):
             try:
-                response = self.session.get(url, params=params)
+                response = self.session.get(url, params=params, timeout=15)
                 
                 # Se for 429 Too Many Requests, respeitamos o Rate Limit
                 if response.status_code == 429:
@@ -49,6 +49,11 @@ class ExciaAPIClient:
                 return response.json()
 
             except HTTPError as e:
+                # Se for 400 e a mensagem indicar que não há registros,
+                # retornamos lista vazia em vez de falhar. (Protege paginação infinita)
+                if response.status_code == 400 and "Nenhum registro encontrado" in response.text:
+                    return []
+                
                 # Vamos logar e levantar exceção se não for 429 ou se acabarem os retries
                 if response.status_code != 429 or attempt == max_retries - 1:
                     print(f"Erro ao chamar {url}: {response.text}")

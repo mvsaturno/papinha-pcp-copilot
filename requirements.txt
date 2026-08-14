@@ -6,3 +6,5 @@ python-multipart==0.0.12
 pytest==8.3.4
 httpx==0.28.1
 a2wsgi==1.10.7
+requests==2.31.0
+python-dotenv==1.0.1

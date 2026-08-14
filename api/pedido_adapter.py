@@ -56,7 +56,10 @@ class PedidoAdapter:
                     "descricao": item.get("descricao", ""),
                     "grade": {},
                     "qtde_total": 0.0,
-                    "dt_entrega_item": None
+                    "qtde_faturada": 0.0,
+                    "ordem": str(item.get("ordem", "1")),
+                    "dt_entrega_item": None,
+                    "fluxo_id": item.get("fluxo", None)
                 }
                 
                 try:
@@ -66,7 +69,10 @@ class PedidoAdapter:
                     agrupados[key]["dt_entrega_item"] = entrega
 
             tam = str(item.get("tam", ""))
-            qtde = float(item.get("qtde", 0.0))
+            # A quantidade real exigida pela produção é o que falta entregar (qtde) + o que já foi entregue (faturado)
+            # O que foi cancelado não entra na conta, pois não vai ser produzido.
+            faturado_qtd = float(item.get("faturado", 0.0))
+            qtde = float(item.get("qtde", 0.0)) + faturado_qtd
             
             if tam in agrupados[key]["grade"]:
                 agrupados[key]["grade"][tam] += qtde
@@ -74,6 +80,7 @@ class PedidoAdapter:
                 agrupados[key]["grade"][tam] = qtde
                 
             agrupados[key]["qtde_total"] += qtde
+            agrupados[key]["qtde_faturada"] += faturado_qtd
 
         # Converter para objetos LinhaPedido
         for props in agrupados.values():
@@ -84,6 +91,8 @@ class PedidoAdapter:
                 descricao=props["descricao"],
                 grade=props["grade"],
                 qtde_total=props["qtde_total"],
+                qtde_faturada=props["qtde_faturada"],
+                ordem=props["ordem"],
                 dt_entrega_item=props["dt_entrega_item"]
             )
             pedido.linhas.append(linha)

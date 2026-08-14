@@ -20,28 +20,16 @@ def alertas_globais_capacidade(
 ) -> list[str]:
     """
     Gera alertas globais de capacidade (independentes de pedido):
-    1. Semanas com pend > limite (estouradas)
-    2. Peças em semanas anteriores à semana atual (atraso)
-    Conforme seção 3.6.
+    1. Semanas com pend > limite (estouradas) na programação ativa (>= semana_atual)
+    Conforme seção 3.6 do ROADMAP.
     """
     alertas = []
     semana_atual = semana_aass(hoje)
     limite = cfg["capacidade"]["limite_total_semana"]
 
-    # Atraso: semanas anteriores com pend > 0
-    atraso_semanas = {s: p for s, p in cap.periodos.items() if s < semana_atual and p > 0}
-    if atraso_semanas:
-        total_atraso = sum(atraso_semanas.values())
-        sem_min = min(atraso_semanas)
-        sem_max = max(atraso_semanas)
-        alertas.append(
-            f"⚠️ {total_atraso:,} peças em atraso (semanas {sem_min}–{sem_max})"
-            .replace(",", ".")
-        )
-
-    # Semanas estouradas
+    # Semanas estouradas na programação ativa (>= semana_atual)
     for s, pend in cap.periodos.items():
-        if pend > limite:
+        if s >= semana_atual and pend > limite:
             excesso = pend - limite
             alertas.append(
                 f"🔴 Semana {s} estourada: {pend:,} peças ({excesso:,} acima do limite {limite:,})"

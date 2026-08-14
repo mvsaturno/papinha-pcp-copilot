@@ -44,13 +44,14 @@ def formatar_num_br(v: float, decimais: int = 0) -> str:
 def arredondar(valor: float, modo: str = "half_up") -> int:
     """
     Arredondamento configurável.
-    modo: 'half_up' (padrão) | 'ceil' | 'floor'
+    modo: 'half_up' (padrão) | 'ceil' / 'UP' (sempre para cima) | 'floor' / 'DOWN' (sempre para baixo)
     """
-    if modo == "ceil":
+    modo_norm = modo.upper()
+    if modo_norm in ("CEIL", "UP"):
         return math.ceil(valor)
-    if modo == "floor":
+    if modo_norm in ("FLOOR", "DOWN"):
         return math.floor(valor)
-    # half_up: padrão bancário — 0.5 arredonda para cima
+    # half_up: 0.5 arredonda para cima (padrão)
     return math.floor(valor + 0.5)
 
 
@@ -109,14 +110,27 @@ def sexta_da_semana(aass: int) -> date:
     Validado: semana 36/2026 termina sexta 04/09/2026.
     """
     ano4, semana = aass_para_date(aass)
-    # ISO weekday: segunda=1, ..., sexta=5
-    # Primeira segunda da semana ISO
     jan4 = date(ano4, 1, 4)  # 4 de janeiro sempre está na semana 1 ISO
     iso_jan4 = jan4.isocalendar()
     segunda_sem1 = jan4 - timedelta(days=iso_jan4.weekday - 1)
     segunda_alvo = segunda_sem1 + timedelta(weeks=semana - 1)
     sexta = segunda_alvo + timedelta(days=4)  # sexta = segunda + 4
     return sexta
+
+
+def quarta_da_semana(aass: int) -> date:
+    """
+    Retorna a quarta-feira da semana ISO AASS.
+    O Excia ancora o fim da embalagem na quarta-feira da semana da OF.
+    Validado: semana 42/2026 termina a embalagem em 14/10/2026.
+    """
+    ano4, semana = aass_para_date(aass)
+    jan4 = date(ano4, 1, 4)
+    iso_jan4 = jan4.isocalendar()
+    segunda_sem1 = jan4 - timedelta(days=iso_jan4.weekday - 1)
+    segunda_alvo = segunda_sem1 + timedelta(weeks=semana - 1)
+    quarta = segunda_alvo + timedelta(days=2)  # quarta = segunda + 2
+    return quarta
 
 
 def aass_add(aass: int, n_semanas: int) -> int:

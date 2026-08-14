@@ -26,16 +26,19 @@ _AASS_MAX = 2799
 
 def parse_capacidade(pdf_bytes: bytes) -> CapacidadeSemanal:
     """
-    Extrai o mapa {aass: qtd_pendente} do PDF de Resumo por Período.
+    Extrai o mapa {aass: qtd_pendente} do PDF de Resumo por Período / Relatório de Capacidade.
+    Prioriza a seção 'Resumo por Periodo' (padrão oficial Excia nas páginas de fechamento).
     Saída: CapacidadeSemanal com dict ordenado + data_relatorio se localizável.
     """
     periodos: dict[int, int] = {}
     data_relatorio: Optional[date] = None
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        # 1. Estratégia Principal: Procurar a seção 'Resumo por Periodo'
+        encontrou_secao = False
         for page in pdf.pages:
             texto = page.extract_text() or ""
-            # Tentar capturar data do relatório (padrão DD/MM/AAAA ou DD/MM/AA)
+            # Capturar data do relatório
             if data_relatorio is None:
                 m_data = re.search(r"\b(\d{2}/\d{2}/\d{2,4})\b", texto)
                 if m_data:
@@ -44,30 +47,45 @@ def parse_capacidade(pdf_bytes: bytes) -> CapacidadeSemanal:
                     except Exception:
                         pass
 
-            for linha in texto.splitlines():
-                linha = linha.strip()
-                m = _RE_PERIODO.search(linha)
-                if not m:
-                    continue
-                aass_str = m.group(1)
-                qtd_str = m.group(2)
-                aass = int(aass_str)
-
-                # Filtrar apenas períodos plausíveis
-                if not (_AASS_MIN <= aass <= _AASS_MAX):
+            linhas = texto.splitlines()
+            for l in linhas:
+                l_clean = l.strip()
+                if "Resumo por Periodo" in l_clean or "Resumo por Período" in l_clean:
+                    encontrou_secao = True
                     continue
 
-                try:
-                    qtd = int(parse_num_br(qtd_str))
-                except ValueError:
-                    continue
+                if encontrou_secao:
+                    # Linha esperada na tabela de resumo: '2633 28.026,00' ou '2649 3.102,00'
+                    m = re.match(r"^(\d{4})\s+([\d.]+,\d{2})$", l_clean)
+                    if m:
+                        sem = int(m.group(1))
+                        if _AASS_MIN <= sem <= _AASS_MAX:
+                            qtd = int(float(m.group(2).replace(".", "").replace(",", ".")))
+                            periodos[sem] = qtd
 
-                # Somar se duplicado (pode haver paginação)
-                if aass in periodos:
-                    # Manter o maior (ou somar — aqui mantemos o primeiro encontrado)
-                    pass
-                else:
-                    periodos[aass] = qtd
+        # 2. Fallback caso o PDF não tenha a seção 'Resumo por Periodo'
+        if not periodos:
+            for page in pdf.pages:
+                texto = page.extract_text() or ""
+                for linha in texto.splitlines():
+                    linha = linha.strip()
+                    m = _RE_PERIODO.search(linha)
+                    if not m:
+                        continue
+                    aass_str = m.group(1)
+                    qtd_str = m.group(2)
+                    aass = int(aass_str)
+
+                    if not (_AASS_MIN <= aass <= _AASS_MAX):
+                        continue
+
+                    try:
+                        qtd = int(parse_num_br(qtd_str))
+                    except ValueError:
+                        continue
+
+                    if aass not in periodos:
+                        periodos[aass] = qtd
 
     return CapacidadeSemanal(
         periodos=dict(sorted(periodos.items())),

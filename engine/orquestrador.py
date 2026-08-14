@@ -1,19 +1,29 @@
+"""
+engine/orquestrador.py — Orquestra a análise de um pedido via número.
+Sprint 4: busca todos os dados via API (pedido, OFs, MRP, capacidade)
+e delega a análise completa ao engine/analise.py (fonte única de veredito).
+"""
+
 from datetime import date
-from engine.models import (
-    CardPedido, ResultadoAnalise, MatchPedido, MatchInsumo, Cronograma
-)
+from typing import Optional
+
+from engine.models import ResultadoAnalise, Pedido
 from api.pedido_adapter import PedidoAdapter
 from api.capacidade_adapter import CapacidadeAdapter
-from engine.analise import (
-    montar_cronograma, avaliar_insumos, verificar_capacidade_pedido
-)
-from parsers.comum import arredondar, formatar_data_br, semana_aass
-import copy
+from api.mrp_adapter import MrpAdapter
+from api.excia_client import ExciaAPIClient
+from engine.analise import analisar
+
 
 def analisar_pedido_por_numero(numero_pedido: str, cfg: dict) -> ResultadoAnalise:
     """
     Orquestra a análise de um pedido consultando a API da Excia.
-    Substitui a dependência de PDFs pelo consumo de endpoints.
+    Fluxo:
+      1. Buscar pedido via BuscarPedido
+      2. Buscar OFs vinculadas via OPLista?pedido=NUMERO (campo 'pedido' confirmado na API)
+      3. Buscar capacidade via OPLista (todas OPs pendentes)
+      4. Explodir MRP (ficha técnica + estoque + ordens futuras)
+      5. Delegar análise completa ao engine.analise.analisar()
     """
     hoje = date.today()
     resultado = ResultadoAnalise(
@@ -21,21 +31,34 @@ def analisar_pedido_por_numero(numero_pedido: str, cfg: dict) -> ResultadoAnalis
         data_analise=hoje,
     )
 
-    # 1. Buscar pedido via API
+    # ── 1. Buscar pedido ──────────────────────────────────────────────────
     pedido_adapter = PedidoAdapter()
     pedido = pedido_adapter.buscar_pedido(numero_pedido)
-    
+
     if not pedido:
         resultado.erros_entrada.append({
             "campo": "numero_pedido",
-            "mensagem": f"Pedido {numero_pedido} não encontrado no Excia. Confira o número e tente novamente."
+            "mensagem": (
+                f"Pedido {numero_pedido} não encontrado no Excia. "
+                "Confira o número e tente novamente."
+            )
         })
         return resultado
 
-    # 2. Buscar capacidade (Opção B - via API)
+    if not pedido.linhas:
+        resultado.erros_entrada.append({
+            "campo": "numero_pedido",
+            "mensagem": (
+                f"Pedido {numero_pedido} foi encontrado mas não tem linhas de produto. "
+                "Verifique se o pedido está ativo no Excia."
+            )
+        })
+        return resultado
+
+    # ── 2. Buscar capacidade (já indexa todas as OFs do sistema) ──────────
     cap_adapter = CapacidadeAdapter()
     try:
-        cap_parsed = cap_adapter.buscar_capacidade(hoje)
+        cap = cap_adapter.buscar_capacidade(cfg=cfg)
     except Exception as e:
         resultado.erros_entrada.append({
             "campo": "capacidade",
@@ -43,115 +66,101 @@ def analisar_pedido_por_numero(numero_pedido: str, cfg: dict) -> ResultadoAnalis
         })
         return resultado
 
-    # Iterar sobre as linhas do pedido já agrupadas pelo adapter
-    for linha in pedido.linhas:
-        avisos = []
-        
-        # 3. Ficha Técnica (Placeholder)
-        ficha = None # api.produto_adapter.buscar_ficha_tecnica(linha.codigo)
-        if ficha is None:
-            avisos.append(
-                f"Artigo {linha.codigo} sem ficha técnica cadastrada na API — "
-                f"análise de insumos não pôde ser feita."
-            )
-            
-        # 4. Rota (Placeholder)
-        rota = None # api.rota_adapter.buscar_rota(linha.codigo)
-        rota_nome = "DEFAULT"
-        if rota is None:
-            avisos.append(
-                f"Rota de produção não encontrada via API para o artigo {linha.codigo} — "
-                f"usando rota padrão de fallback."
-            )
-            
-        # 5. Estoque (Placeholder)
-        estoque = {} # api.estoque_adapter.buscar_estoque(...)
-        
-        # 6. OP (Placeholder)
-        op = None # api.op_adapter.buscar_op_por_pedido(...)
-        
-        # 7. Insumos (Placeholder - MRP removido no Sprint 4 Option B)
-        # Como não temos ficha técnica nem estoque real por enquanto, o MatchPedido fica vazio
-        match = MatchPedido(
-            cod_artigo=linha.codigo,
-            of=op.numero if op else "",
-            confianca="BAIXA",
-            insumos=[],
-            avisos=avisos,
-            tecido_principal_encontrado=False
-        )
+    # ── 3. Enriquecer linhas com OFs e fluxo oficial ─────────────────────
+    _enriquecer_linhas_com_ofs(pedido, numero_pedido, cap_adapter, cfg)
 
-        # 8-10. Reaproveitar engine existente
-        qtd_of = arredondar(
-            linha.qtde_total * (1 + cfg["geral"]["buffer_producao_pct"] / 100),
-            cfg["geral"]["arredondamento"]
+    # ── 4. Explodir MRP ───────────────────────────────────────────────────
+    try:
+        mrp_adapter = MrpAdapter()
+        mrp = mrp_adapter.explodir_necessidades(pedido.linhas)
+    except Exception as e:
+        resultado.avisos_leitura.append(
+            f"⚠️ Falha ao buscar explosão de materiais na API: {str(e)}. "
+            "A análise prossegue sem dados de insumos."
         )
-        
-        cronograma = montar_cronograma(linha.descricao, rota_nome, hoje, cfg)
-        # O prazo do item vem da API (dt_entrega_item)
-        dt_entrega = linha.dt_entrega_item or pedido.entrega
-        semana_entrega = semana_aass(dt_entrega)
-        
-        # Subtrair dias de PCP da entrega para achar a semana alvo de finalização
-        from datetime import timedelta
-        alvo_date = dt_entrega - timedelta(days=cronograma.pcp_dias)
-        semana_alvo = semana_aass(alvo_date)
-        
-        # Como match.insumos está vazio, não haverá atraso por insumo, mas chamamos para manter fluxo
-        insumos_avaliados, data_liberacao_insumo = avaliar_insumos(match.insumos, hoje)
-        
-        analise_cap = verificar_capacidade_pedido(
-            qtd_of=qtd_of,
-            semana_alvo=semana_alvo,
-            cap=cap_parsed,
-            cfg=cfg
-        )
-        
-        # Determinar Veredito
-        if len(analise_cap.avisos) > 0 and not analise_cap.cabe_no_alvo:
-            veredito = "VERMELHO"
-            motivos = analise_cap.avisos.copy()
-            sugestao = f"Sugerido transferir para semana {analise_cap.semana_sugerida}." if analise_cap.semana_sugerida else "Semana sugerida não encontrada no horizonte."
-        else:
-            veredito = "VERDE"
-            motivos = ["Capacidade OK para a semana alvo."]
-            sugestao = "Manter planejamento."
-            
-        dados_brutos = {
-            "pedido_numero": pedido.numero,
-            "ped_cliente": pedido.ped_cliente,
-            "artigo": linha.codigo,
-            "descricao": linha.descricao,
-            "grade": linha.grade,
-            "qtde_total": linha.qtde_total,
-            "qtd_of": qtd_of,
-            "emissao": formatar_data_br(pedido.emissao),
-            "entrega": formatar_data_br(pedido.entrega),
-            "semana_entrega_aass": semana_entrega,
-            "semana_alvo_aass": semana_alvo,
-        }
-        
-        card = CardPedido(
-            numero_pedido=pedido.numero,
-            artigo=linha.codigo,
-            descricao=linha.descricao,
-            cod_cor=linha.cor,
-            nome_cor=linha.desc_cor,
-            qtde_pedido=linha.qtde_total,
-            qtd_of=qtd_of,
-            entrega_cliente=dt_entrega,
-            semana_alvo=semana_alvo,
-            veredito=veredito,
-            motivos=motivos,
-            match=match,
-            insumos=insumos_avaliados,
-            cronograma=cronograma,
-            capacidade=analise_cap,
-            sugestao=sugestao,
-            sugestao_semana=analise_cap.semana_sugerida,
-            dados_brutos=dados_brutos
-        )
-        
-        resultado.pedidos.append(card)
+        mrp = []
+
+    # ── 5. Delegar análise ao engine (única fonte de verdade) ─────────────
+    try:
+        resultado = analisar([pedido], mrp, cap, hoje, cfg, resultado)
+    except Exception as e:
+        resultado.avisos_leitura.append(f"Erro inesperado na análise: {str(e)}")
 
     return resultado
+
+
+def _enriquecer_linhas_com_ofs(
+    pedido: Pedido, numero_pedido: str, cap_adapter: CapacidadeAdapter, cfg: dict
+) -> None:
+    """
+    Associa as OFs abertas para este pedido e descobre o fluxo do produto via API Excia.
+    Quando uma OF existe:
+      - Marca linha.of_emitida = True
+      - Preenche linha.numero_of, linha.semana_of_oficial, linha.dt_emissao_of e linha.qtde_of_oficial
+      - Descobre o código do fluxo oficial da peça via ParteProdutoLista.
+    """
+    from parsers.comum import parse_data_br
+    from api.fluxo_adapter import FluxoAdapter
+
+    fluxo_adapter = FluxoAdapter()
+    
+    # 1. Descobrir fluxo do produto para cada linha via ParteProdutoLista
+    for linha in pedido.linhas:
+        if linha.codigo and not getattr(linha, "fluxo_id", None):
+            try:
+                fl = fluxo_adapter.buscar_fluxo_do_produto(linha.codigo)
+                if fl:
+                    linha.fluxo_id = fl
+            except Exception:
+                pass
+
+    # 2. Obter OFs ativas do pedido direto do índice em memória
+    ops_do_pedido = cap_adapter.buscar_ofs_do_pedido(numero_pedido)
+    
+    # Fallback se não indexou ainda
+    if not ops_do_pedido:
+        try:
+            client = ExciaAPIClient()
+            resp = client.get("OPLista", params={"emissao": "01/01/2025", "situacao": "P"})
+            if resp and isinstance(resp, list):
+                ops_do_pedido = [op for op in resp if str(op.get("pedido", "")).strip() == str(numero_pedido).strip()]
+        except Exception:
+            pass
+
+    if ops_do_pedido:
+        for linha in pedido.linhas:
+            op_match = None
+            for op in ops_do_pedido:
+                if str(op.get("codigo", "")).strip() == str(linha.codigo).strip():
+                    op_match = op
+                    break
+            if not op_match and ops_do_pedido:
+                op_match = ops_do_pedido[0]
+
+            if op_match:
+                linha.of_emitida = True
+                linha.numero_of = str(op_match.get("numero", ""))
+                
+                p_str = str(op_match.get("periodo", "")).strip()
+                if p_str and p_str.isdigit():
+                    linha.semana_of_oficial = int(p_str)
+                
+                dt_ini_str = str(op_match.get("dt_inicio", "")).strip()
+                if dt_ini_str:
+                    try:
+                        linha.dt_emissao_of = parse_data_br(dt_ini_str)
+                    except Exception:
+                        pass
+                
+                q_of = sum(float(it.get("qtde") or 0.0) for it in op_match.get("itens", []))
+                if q_of > 0:
+                    linha.qtde_of_oficial = int(q_of)
+
+        pedido.avisos_parsing.append(
+            f"🏷️ Pedido {numero_pedido} já possui OF emitida no Excia: OF {ops_do_pedido[0].get('numero')} "
+            f"(Semana Oficial: {ops_do_pedido[0].get('periodo')})."
+        )
+    else:
+        pedido.avisos_parsing.append(
+            f"ℹ️ Pedido {numero_pedido} ainda não possui OF emitida (Simulação Pré-OF)."
+        )

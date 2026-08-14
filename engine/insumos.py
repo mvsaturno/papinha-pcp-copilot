@@ -50,7 +50,10 @@ def _avaliar_insumo(
     necessario = ins.necessario
 
     # ── Determinar fase de consumo ─────────────────────────────────────────
-    ins.fase_consumo = _determinar_fase(ins.descricao, insumo_fase_cfg, fase_default)
+    # Se já veio preenchida pelo MrpAdapter (setor real da API), manter.
+    # Caso contrário, inferir pela keyword da descrição (fallback para PDF/legado).
+    if not ins.fase_consumo:
+        ins.fase_consumo = _determinar_fase(ins.descricao, insumo_fase_cfg, fase_default)
 
     # ── Status: OK_ESTOQUE ─────────────────────────────────────────────────
     gap = necessario - ins.aloc_estoque

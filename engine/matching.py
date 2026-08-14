@@ -107,9 +107,10 @@ def casar_com_mrp(
         melhor_of = next(iter(ofs_por_artigo))
         # Pegar o consumo máximo para exibir no aviso
         consumo_max = max(p.consumo for p, _ in ofs_por_artigo[melhor_of])
+        buffer_pct = cfg["geral"]["buffer_producao_pct"]
         avisos.append(
             f"Quantidade da OF no MRP ({consumo_max:.0f}) não confere com qtd do pedido "
-            f"(pedido×1,07={qtd_of}) — verificar no Excia"
+            f"(pedido×{1 + buffer_pct/100:.0%}={qtd_of}) — verificar no Excia"
         )
         confianca = "BAIXA"
 
@@ -138,8 +139,16 @@ def casar_com_mrp(
                 break
 
         is_cor_divergente = False
-        if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
-            is_cor_divergente = True
+        
+        # Ignorar materiais que não possuem cor de fato
+        ignorar_divergencia = False
+        cor_nome_up = bloco.nome_cor.upper() if bloco.nome_cor else ""
+        if bloco.cod_cor in ["", "0", "00", "000000", "00000", "0000", "000", "00"] or "PADRAO" in cor_nome_up or "UNICO" in cor_nome_up:
+            ignorar_divergencia = True
+            
+        if not ignorar_divergencia:
+            if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
+                is_cor_divergente = True
 
         insumo = MatchInsumo(
             cod_insumo=bloco.cod_insumo,
@@ -155,6 +164,8 @@ def casar_com_mrp(
             aloc_tinturaria=prod.aloc_tinturaria,
             saldo=prod.saldo,
             cor_divergente=is_cor_divergente,
+            # Propagar fase real da ficha técnica (setor_atual preenchido pelo MrpAdapter via API)
+            fase_consumo=prod.setor_atual if prod.setor_atual else "",
         )
         insumos.append(insumo)
 

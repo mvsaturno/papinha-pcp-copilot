@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Copiloto PCP — Papinha Baby</title>
-  <meta name="description" content="Ferramenta de análise de PCP para pedidos MAGAZINE — Papinha Baby"/>
+  <meta name="description" content="Ferramenta de análise de PCP — Papinha Baby"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -272,6 +272,7 @@
       flex-shrink: 0;
     }
     .veredito-badge.VERDE { background: var(--green-bg); color: var(--green); border: 1.5px solid var(--green); }
+    .veredito-badge.CANCELADO { background: rgba(156,163,175,0.1); color: #9CA3AF; border: 1.5px solid #9CA3AF; }
     .veredito-badge.AMARELO { background: var(--yellow-bg); color: var(--yellow); border: 1.5px solid var(--yellow); }
     .veredito-badge.VERMELHO { background: var(--red-bg); color: var(--red); border: 1.5px solid var(--red); }
 
@@ -336,6 +337,7 @@
       font-weight: 500;
     }
     .sugestao-box.verde { border-color: rgba(34,197,94,0.4); color: var(--green); }
+    .sugestao-box.cancelado { border-color: rgba(156,163,175,0.4); color: #9CA3AF; }
     .sugestao-box.vermelho { border-color: rgba(239,68,68,0.4); color: var(--red); }
     .sugestao-box.amarelo { border-color: rgba(234,179,8,0.4); color: var(--yellow); }
 
@@ -537,36 +539,45 @@
     <div class="logo">🧵</div>
     <div class="header-text">
       <h1>Copiloto de Análise PCP</h1>
-      <p>Papinha Baby — Pedidos MAGAZINE / Riachuelo</p>
+      <p>Papinha Baby</p>
     </div>
-    <span class="badge">MVP v1.0</span>
+    <span class="badge">Sprint 4 — API</span>
   </header>
 
-  <!-- Upload Panel -->
   <!-- Input Panel -->
   <div class="upload-panel">
     <h2>🔍 Consultar Pedido</h2>
-    <div style="display:flex;gap:10px;margin:20px 0;">
-      <input type="text" id="input-numero-pedido" placeholder="Ex: 103447" style="flex:2; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg); color: var(--text); font-size: 16px;">
-      <button id="btn-analisar-api" onclick="executarAnaliseAPI()" style="flex:1">
+    <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">Digite o número do pedido de venda para iniciar a análise completa via API Excia.</p>
+    <div style="display:flex;gap:10px;margin:20px 0;align-items:center;">
+      <input
+        type="text"
+        id="input-numero-pedido"
+        placeholder="Ex: 105550"
+        inputmode="numeric"
+        pattern="[0-9]*"
+        autocomplete="off"
+        style="flex:2; padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg); color: var(--text); font-size: 18px; font-weight: 600; letter-spacing: 1px; outline: none; transition: border-color 0.2s;"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border2)'"
+        onkeydown="if(event.key==='Enter') executarAnaliseAPI()"
+      >
+      <button
+        id="btn-analisar-api"
+        onclick="executarAnaliseAPI()"
+        style="flex:1; padding:14px; background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%); border:none; border-radius:var(--radius-sm); color:#fff; font-size:15px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 20px rgba(59,130,246,0.3); transition:all 0.2s; white-space:nowrap;"
+      >
         <span id="btn-icon-api">⚡</span>
         <span id="btn-text-api">Analisar via API</span>
       </button>
     </div>
-    <div style="display:flex;gap:10px">
-      <button id="btn-demo" onclick="executarAnaliseDemo()" style="flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text-muted);font-size:12px;font-weight:600;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s">
-        <span>💡</span>
-        <span>Carregar Fixtures (Demo offline)</span>
-      </button>
-    </div>
-    <p class="hint">A ferramenta se conectará ao Excia para obter o pedido e calcular a capacidade necessária baseada nas Ordens de Produção vigentes.</p>
+    <div id="api-progress" style="display:none; font-size:12px; color:var(--accent); margin-top:-10px; margin-bottom:8px; letter-spacing:0.2px;"></div>
   </div>
 
   <!-- Resultados -->
   <div id="resultados">
     <div id="empty-state">
       <div class="empty-icon">📈</div>
-      <p>Envie os três PDFs do Excia para iniciar a análise.</p>
+      <p>Digite o número do Pedido para iniciar a análise.</p>
     </div>
 
     <div id="erros-entrada"></div>
@@ -671,16 +682,35 @@ async function executarAnaliseAPI() {
   const btn = document.getElementById('btn-analisar-api');
   const icon = document.getElementById('btn-icon-api');
   const text = document.getElementById('btn-text-api');
+  const progress = document.getElementById('api-progress');
   
   const numero = inputNumero.value.trim();
-  if (!numero) {
-    alert("Digite o número do pedido.");
+  if (!numero || !/^\d+$/.test(numero)) {
+    inputNumero.style.borderColor = 'var(--red)';
+    setTimeout(() => inputNumero.style.borderColor = 'var(--border2)', 1500);
     return;
   }
 
   btn.disabled = true;
+  btn.style.opacity = '0.7';
   icon.outerHTML = `<div class="spinner" id="btn-icon-api"></div>`;
-  text.textContent = 'Analisando via API...';
+  text.textContent = 'Analisando...';
+  progress.style.display = 'block';
+  
+  // Mensagens de progresso para indicar que está trabalhando
+  const steps = [
+    '⏳ Buscando pedido no Excia...',
+    '📦 Verificando OFs vinculadas...',
+    '🧵 Carregando ficha técnica dos artigos...',
+    '📊 Calculando insumos e capacidade...',
+    '✅ Finalizando análise...'
+  ];
+  let stepIdx = 0;
+  progress.textContent = steps[0];
+  const progressInterval = setInterval(() => {
+    stepIdx = (stepIdx + 1) % steps.length;
+    progress.textContent = steps[stepIdx];
+  }, 3000);
 
   const fd = new FormData();
   fd.append('numero_pedido', numero);
@@ -688,12 +718,18 @@ async function executarAnaliseAPI() {
   try {
     const res = await fetch('/analisar-pedido', { method: 'POST', body: fd });
     const data = await res.json();
+    clearInterval(progressInterval);
+    progress.style.display = 'none';
     renderizar(data);
   } catch(e) {
+    clearInterval(progressInterval);
+    progress.style.display = 'none';
     renderErroGeral('Erro de comunicação com o servidor: ' + e.message);
   } finally {
     btn.disabled = false;
-    document.getElementById('btn-icon-api').outerHTML = `<span id="btn-icon-api">⚡</span>`;
+    btn.style.opacity = '1';
+    const iconEl = document.getElementById('btn-icon-api');
+    if (iconEl) iconEl.outerHTML = `<span id="btn-icon-api">⚡</span>`;
     document.getElementById('btn-text-api').textContent = 'Analisar via API';
   }
 }
@@ -776,8 +812,8 @@ function renderizar(data) {
     return;
   }
 
-  // Ordenar: VERMELHO → AMARELO → VERDE
-  const ordem = { VERMELHO: 0, AMARELO: 1, VERDE: 2 };
+  // Ordenar: VERMELHO → AMARELO → VERDE → CANCELADO
+  const ordem = { VERMELHO: 0, AMARELO: 1, VERDE: 2, CANCELADO: 3 };
   const pedidos = [...data.pedidos].sort((a, b) => (ordem[a.veredito] ?? 3) - (ordem[b.veredito] ?? 3));
 
   container.innerHTML = `<div class="section-title">Resultado da Análise — ${pedidos.length} pedido(s)</div>`;
@@ -792,7 +828,7 @@ function criarCard(p, idx) {
   div.className = 'card fade-in';
   div.style.animationDelay = `${idx * 0.05}s`;
 
-  const emojiV = { VERDE: '✅', AMARELO: '⚠️', VERMELHO: '❌' };
+  const emojiV = { VERDE: '✅', AMARELO: '⚠️', VERMELHO: '❌', CANCELADO: '🚫' };
   const qtdFmt = n => n != null ? n.toLocaleString('pt-BR') : '—';
   const dateFmt = s => {
     if (!s) return '—';
@@ -801,7 +837,7 @@ function criarCard(p, idx) {
   };
 
   // Determinar cor da sugestão
-  const sugCls = p.veredito === 'VERDE' ? 'verde' : p.veredito === 'VERMELHO' ? 'vermelho' : 'amarelo';
+  const sugCls = p.veredito === 'VERDE' ? 'verde' : p.veredito === 'VERMELHO' ? 'vermelho' : p.veredito === 'CANCELADO' ? 'cancelado' : 'amarelo';
 
   // Cronograma
   let timelineHtml = '';
@@ -871,25 +907,40 @@ function criarCard(p, idx) {
   // Dados brutos
   const brutosJson = JSON.stringify(p.dados_brutos || {}, null, 2);
 
+  // Header com badge de OF emitida vs Simulação Pré-OF
+  const ofBadgeHtml = p.of_emitida && p.numero_of
+    ? `<span style="background:rgba(59,130,246,0.15);color:#60A5FA;border:1px solid rgba(59,130,246,0.4);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;letter-spacing:0.4px">🏷️ OF ${p.numero_of} (SEM. ${p.semana_of_oficial || p.semana_alvo})</span>`
+    : `<span style="background:rgba(234,179,8,0.12);color:#FBBF24;border:1px solid rgba(234,179,8,0.3);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">💡 SIMULAÇÃO PRÉ-OF</span>`;
+
   div.innerHTML = `
     <div class="card-header" onclick="toggleCard(this.closest('.card'))">
       <div class="veredito-badge ${p.veredito}">${emojiV[p.veredito] || '?'}</div>
       <div class="card-title">
-        <strong>Pedido ${p.numero_pedido} — ${p.descricao}</strong>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+          <strong>Pedido ${p.numero_pedido} — ${p.descricao}</strong>
+          ${ofBadgeHtml}
+        </div>
         <span>Artigo ${p.artigo} | Cor ${p.cod_cor} ${p.nome_cor}</span>
       </div>
       <div class="card-meta">
         <div class="meta-item">
           <span class="val">${dateFmt(p.entrega_cliente ? p.entrega_cliente.split ? p.entrega_cliente : null : null)}</span>
-          <span class="lbl">Entrega</span>
+          <span class="lbl">Entrega Cliente</span>
         </div>
         <div class="meta-item">
-          <span class="val">${qtdFmt(p.qtde_pedido)}</span>
-          <span class="lbl">Peças</span>
+          <span class="val">${p.of_emitida && (p.qtde_of_oficial || p.qtd_of) ? qtdFmt(p.qtde_of_oficial || p.qtd_of) : (p.qtd_of || qtdFmt(p.qtde_pedido))}</span>
+          <span class="lbl">
+            ${p.of_emitida ? 'Peças na OF' : 'Peças a Produzir'}
+            <br/><span style="font-size: 0.78em; color: #60A5FA; font-weight: 500;">✓ Inclui quebra</span>
+            ${p.qtde_pedido && (p.qtde_pedido !== (p.qtde_of_oficial || p.qtd_of)) ? `<br/><span style="font-size: 0.78em; color: var(--text-muted);">(${qtdFmt(p.qtde_pedido)} pedidas)</span>` : ''}
+            ${p.qtde_faturada > 0 ? `<br/><span style="font-size: 0.8em; color: var(--green);">${qtdFmt(p.qtde_faturada)} entregues</span>` : ''}
+          </span>
         </div>
         <div class="meta-item">
-          <span class="val" style="color:${p.veredito==='VERDE'?'var(--green)':p.veredito==='AMARELO'?'var(--yellow)':'var(--red)'}">Sem. ${p.semana_alvo}</span>
-          <span class="lbl">Semana alvo</span>
+          <span class="val" style="color:${p.veredito==='VERDE'?'var(--green)':p.veredito==='AMARELO'?'var(--yellow)':p.veredito==='CANCELADO'?'#9CA3AF':'var(--red)'}">
+            ${p.of_emitida && p.semana_of_oficial ? `Sem. ${p.semana_of_oficial}` : `Sem. ${p.semana_alvo}`}
+          </span>
+          <span class="lbl">${p.of_emitida ? 'Semana da OF' : 'Semana Alvo'}</span>
         </div>
       </div>
       <span class="chevron">▼</span>
@@ -899,7 +950,7 @@ function criarCard(p, idx) {
       ${motivosHtml}
       <div class="inner-sections">
         <div class="inner-box">
-          <h4>📅 Cronograma Draft</h4>
+          <h4>📅 Cronograma ${p.of_emitida ? 'Oficial da OF' : 'Draft'}</h4>
           <div class="timeline">${timelineHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}</div>
           ${p.cronograma ? `<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Rota: ${p.cronograma.rota_detectada} | OF: ${qtdFmt(p.qtd_of)} peças (c/ buffer)</div>` : ''}
         </div>
@@ -908,7 +959,7 @@ function criarCard(p, idx) {
           ${capHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}
           <div style="margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">
             ${p.capacidade && p.capacidade.semana_sugerida ? `<div>💡 <b>Semana Sugerida:</b> Produzir na semana ${p.capacidade.semana_sugerida} (capacidade OK)</div>` : ''}
-            <div>★ <b>Semana Alvo:</b> entrega interna planejada (semana solicitada pelo cliente − 2)</div>
+            <div>★ <b>Semana Alvo:</b> ${p.of_emitida ? 'Semana gravada na OF no Excia' : 'entrega interna planejada (semana solicitada pelo cliente − 2)'}</div>
           </div>
         </div>
       </div>
