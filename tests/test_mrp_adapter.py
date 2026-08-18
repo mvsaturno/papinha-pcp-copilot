@@ -72,6 +72,28 @@ class TestMrpAdapter(unittest.TestCase):
         self.assertEqual(_calcular_qtde_aplicavel({"faixa": "06"}, linha), 300.0)
         self.assertEqual(_calcular_qtde_aplicavel({"faixa": "08"}, linha), 0.0)
 
+    def test_calcular_qtde_aplicavel_sigla_cliente(self):
+        linha = LinhaPedido(
+            ordem="1",
+            codigo="1011033",
+            descricao="CONJUNTO MCQUEEN",
+            cor="00004",
+            desc_cor="MARINHO",
+            grade={"2": 3000.0},
+            qtde_total=3000.0
+        )
+        # Faixas de cliente ("RIA", "REN", "YOU") aplicam-se à quantidade total
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "RIA"}, linha), 3000.0)
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "REN"}, linha), 3000.0)
+        # Faixa do tamanho 2 aplica-se
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "2"}, linha), 3000.0)
+        # Faixas de outros tamanhos (3, 4, 5, 6) não se aplicam
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "3"}, linha), 0.0)
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "4"}, linha), 0.0)
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "5"}, linha), 0.0)
+        self.assertEqual(_calcular_qtde_aplicavel({"faixa": "6"}, linha), 0.0)
+
+
 
 if __name__ == "__main__":
     unittest.main()

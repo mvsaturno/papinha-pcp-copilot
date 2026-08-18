@@ -278,19 +278,29 @@ def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> Optional[str]:
     return cor_lista[0].get("cor_i", "0")
 
 
+# Conjunto padrão de tamanhos/grades de vestuário conhecidos
+_TAMANHOS_CONHECIDOS = {
+    "RN", "PP", "P", "M", "G", "GG", "XG", "XGG", "EG", "EGG", "XXG",
+    "G1", "G2", "G3", "G4", "U", "UN", "UNICO",
+    "1", "2", "3", "4", "5", "6", "7", "8", "10", "12", "14", "16", "18",
+    "01", "02", "03", "04", "05", "06", "07", "08"
+}
+
+
 def _calcular_qtde_aplicavel(ins_data: dict, linha: LinhaPedido) -> float:
     """
     Calcula a quantidade de peças da linha às quais o insumo se aplica.
     Regra do campo 'faixa' na Ficha Técnica do Excia:
-      - '00', '', '0', 'TODOS', 'GERAL': aplica-se a toda a grade do produto -> linha.qtde_total
-      - Tamanho específico ('PP', 'P', 'M', 'G', 'GG', '01', etc.): aplica-se SOMENTE
-        à quantidade de peças daquele tamanho presentes em linha.grade.
-        Se o pedido não contiver peças daquele tamanho, retorna 0.0 (insumo não utilizado).
+      - Faixas genéricas / siglas de cliente ('00', '', '0', 'RIA', 'REN', 'YOU', 'TODOS', etc.):
+        aplicam-se a toda a produção do produto -> linha.qtde_total.
+      - Tamanho específico ('PP', 'P', 'M', 'G', 'GG', '2', '4', etc.):
+        aplica-se SOMENTE se aquele tamanho existir na grade do pedido (linha.grade).
+        Se for um tamanho conhecido mas não existir no pedido, retorna 0.0 (insumo não utilizado).
     """
     faixa = str(ins_data.get("faixa", "")).strip().upper()
 
-    # Faixa genérica -> aplica à quantidade total da linha
-    if not faixa or faixa in ("00", "0", "TODOS", "GERAL"):
+    # 1. Faixas vazias ou explicitamente genéricas -> quantidade total
+    if not faixa or faixa in ("00", "0", "TODOS", "GERAL", "PADRAO", "LIVRE"):
         return float(linha.qtde_total)
 
     if not linha.grade:
@@ -298,16 +308,25 @@ def _calcular_qtde_aplicavel(ins_data: dict, linha: LinhaPedido) -> float:
 
     grade_norm = {str(k).strip().upper(): float(v) for k, v in linha.grade.items()}
 
-    # 1. Correspondência direta de tamanho (ex: "PP" == "PP")
+    # 2. Correspondência direta de tamanho (ex: faixa "PP" == grade "PP", ou faixa "2" == grade "2")
     if faixa in grade_norm:
         return grade_norm[faixa]
 
-    # 2. Correspondência numérica (ex: faixa "04" == tamanho "4")
+    # 3. Correspondência numérica (ex: faixa "04" == grade "4")
     if faixa.isdigit():
         f_int = int(faixa)
         for k, v in grade_norm.items():
             if k.isdigit() and int(k) == f_int:
                 return v
 
-    return 0.0
+    # 4. Se a faixa for um tamanho conhecido de grade (mas não está na grade deste pedido):
+    #    Ex: Pedido só tem "PP" ou "2", e o insumo tem faixa "P", "M", "3", "4"
+    #    -> Insumo não é consumido neste pedido.
+    if faixa in _TAMANHOS_CONHECIDOS or (faixa.isdigit() and int(faixa) <= 50):
+        return 0.0
+
+    # 5. Caso contrário, trata-se de sigla de cliente/grade (ex: "RIA", "REN", "YOU", "CEA")
+    #    -> Aplica-se a toda a produção do pedido.
+    return float(linha.qtde_total)
+
 
