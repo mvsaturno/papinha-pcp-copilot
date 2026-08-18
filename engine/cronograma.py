@@ -65,10 +65,11 @@ def montar_cronograma(
         except Exception:
             pass
 
-    def _obter_dias_fase(nome: str, pcp_dias_atual: int) -> int:
+    def _obter_dias_fase(nome: str, pcp_dias_atual: Optional[int] = None) -> int:
+        p_dias = pcp_dias if pcp_dias_atual is None else pcp_dias_atual
         n = nome.upper().replace("Ã", "A").replace("Ó", "O").replace("É", "E").replace("Á", "A")
         if "PCP" in n:
-            return pcp_dias_atual
+            return p_dias
         if "ENCAIXE" in n and "AGUARDANDO" not in n:
             return fases_dias.get("ENCAIXE", 1)
         if "CORTE" in n and "CD" not in n:
