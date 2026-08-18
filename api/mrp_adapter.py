@@ -71,6 +71,12 @@ class MrpAdapter:
                 cod_insumo = ins_data.get("insumo", "")
                 if not cod_insumo:
                     continue
+
+                # Validar se o insumo é aplicável à grade deste pedido
+                qtde_aplicavel = _calcular_qtde_aplicavel(ins_data, linha)
+                if qtde_aplicavel <= 0:
+                    continue
+
                 materiais_necessarios.add(cod_insumo)
 
                 # Determinar cor do insumo para esta variante de cor do produto
@@ -95,6 +101,11 @@ class MrpAdapter:
                 if not cod_insumo:
                     continue
 
+                # Validar se o insumo é aplicável à grade deste pedido
+                qtde_aplicavel = _calcular_qtde_aplicavel(ins_data, linha)
+                if qtde_aplicavel <= 0:
+                    continue
+
                 # Resolver cor
                 cod_cor_insumo = _resolver_cor_insumo(ins_data, linha.cor)
                 if cod_cor_insumo is None:
@@ -102,9 +113,9 @@ class MrpAdapter:
 
                 chave = f"{cod_insumo}_{cod_cor_insumo}"
 
-                # Consumo: consumo_unitário × quantidade_total_da_linha
+                # Consumo: consumo_unitário × quantidade_aplicável_da_grade
                 consumo_un = float(ins_data.get("consumo", 0.0))
-                consumo_total = consumo_un * linha.qtde_total
+                consumo_total = consumo_un * qtde_aplicavel
 
                 # Setor de consumo: usar o campo real da ficha técnica
                 setor_codigo = str(ins_data.get("setor", ""))
@@ -265,3 +276,38 @@ def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> Optional[str]:
 
     # Fallback: primeira cor disponível
     return cor_lista[0].get("cor_i", "0")
+
+
+def _calcular_qtde_aplicavel(ins_data: dict, linha: LinhaPedido) -> float:
+    """
+    Calcula a quantidade de peças da linha às quais o insumo se aplica.
+    Regra do campo 'faixa' na Ficha Técnica do Excia:
+      - '00', '', '0', 'TODOS', 'GERAL': aplica-se a toda a grade do produto -> linha.qtde_total
+      - Tamanho específico ('PP', 'P', 'M', 'G', 'GG', '01', etc.): aplica-se SOMENTE
+        à quantidade de peças daquele tamanho presentes em linha.grade.
+        Se o pedido não contiver peças daquele tamanho, retorna 0.0 (insumo não utilizado).
+    """
+    faixa = str(ins_data.get("faixa", "")).strip().upper()
+
+    # Faixa genérica -> aplica à quantidade total da linha
+    if not faixa or faixa in ("00", "0", "TODOS", "GERAL"):
+        return float(linha.qtde_total)
+
+    if not linha.grade:
+        return float(linha.qtde_total)
+
+    grade_norm = {str(k).strip().upper(): float(v) for k, v in linha.grade.items()}
+
+    # 1. Correspondência direta de tamanho (ex: "PP" == "PP")
+    if faixa in grade_norm:
+        return grade_norm[faixa]
+
+    # 2. Correspondência numérica (ex: faixa "04" == tamanho "4")
+    if faixa.isdigit():
+        f_int = int(faixa)
+        for k, v in grade_norm.items():
+            if k.isdigit() and int(k) == f_int:
+                return v
+
+    return 0.0
+
