@@ -109,9 +109,10 @@ def _analisar_linha(
     # Se a OF já foi emitida, a semana alvo oficial é a semana gravada no Excia
     if of_emitida and semana_of:
         semana_alvo = semana_of
+        semana_minima = min(cronograma.semana_fim_aass, semana_of)
     else:
         semana_alvo = _aass_sub(semana_entrega, semanas_antes)
-    semana_minima = cronograma.semana_fim_aass
+        semana_minima = cronograma.semana_fim_aass
 
     # 5. Checagem de capacidade
     analise_cap = verificar_capacidade_pedido(qtd_of, semana_alvo, semana_minima, cap, cfg)
@@ -121,11 +122,14 @@ def _analisar_linha(
         # No Excia, o cronograma da OF é ancorado na semana gravada na ordem (término na quarta-feira)
         fim_producao = quarta_da_semana(semana_of)
         cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
+        semana_minima = cronograma.semana_fim_aass
     else:
         estrategia = cfg["geral"].get("estrategia_cronograma", "jit")
         if estrategia == "jit" and analise_cap.semana_sugerida is not None:
             fim_producao = sexta_da_semana(analise_cap.semana_sugerida)
             cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
+            if analise_cap.cabe_no_alvo and cronograma.inicio_mais_tarde and cronograma.inicio_mais_tarde >= hoje:
+                semana_minima = min(semana_minima, analise_cap.semana_sugerida)
 
     # 6. Veredito (seção 3.8 do Sprint 2)
     veredito, motivos, sugestao, semana_sug = _decidir_veredito(

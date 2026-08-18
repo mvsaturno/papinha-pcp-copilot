@@ -11,7 +11,13 @@ from datetime import date, timedelta
 from typing import Optional
 
 from engine.models import Cronograma, FaseCronograma, MatchPedido, LinhaPedido
-from parsers.comum import semana_aass, recuar_dias_uteis_excia, avancar_dias_uteis_excia
+from parsers.comum import (
+    semana_aass,
+    recuar_dias_uteis_excia,
+    avancar_dias_uteis_excia,
+    contar_dias_uteis_excia,
+    quarta_da_semana,
+)
 from api.fluxo_adapter import FluxoAdapter
 
 
@@ -29,6 +35,11 @@ def montar_cronograma(
     rotas_cfg = cfg["rotas"]
     overrides_cfg = cfg.get("overrides_fases_por_rota", {})
     lt_futuro = cfg["lead_times_estoque_futuro_dias"]
+
+    # Dados de OF emitida
+    of_emitida = getattr(linha, "of_emitida", False) or (match and match.of_emitida)
+    dt_emissao_of = getattr(linha, "dt_emissao_of", None) or (match and match.dt_emissao_of)
+    semana_of = getattr(linha, "semana_of_oficial", None) or (match and match.semana_of_oficial)
 
     # 1. Calcular duração da fase PCP (dinâmica — seção 3.5)
     pcp_dias = _calcular_pcp_dias(match, fases_dias, lt_futuro, cfg)
@@ -54,10 +65,10 @@ def montar_cronograma(
         except Exception:
             pass
 
-    def _obter_dias_fase(nome: str) -> int:
+    def _obter_dias_fase(nome: str, pcp_dias_atual: int) -> int:
         n = nome.upper().replace("Ã", "A").replace("Ó", "O").replace("É", "E").replace("Á", "A")
         if "PCP" in n:
-            return pcp_dias
+            return pcp_dias_atual
         if "ENCAIXE" in n and "AGUARDANDO" not in n:
             return fases_dias.get("ENCAIXE", 1)
         if "CORTE" in n and "CD" not in n:
@@ -90,24 +101,27 @@ def montar_cronograma(
             return 1
         return fases_dias.get(nome, 1)
 
+    # Identificar nomes das fases da rota
     if fases_dinamicas:
         rota_nome = f"API ({fluxo_inferido})"
-        fases_rota = []
-        for f_nome in fases_dinamicas:
-            d = _obter_dias_fase(f_nome)
-            fases_rota.append((f_nome, d))
+        nomes_fases_rota = fases_dinamicas
     else:
         rota_nome = _detectar_rota(linha.descricao, rotas_cfg)
-        rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
-        overrides = overrides_cfg.get(rota_nome, {})
-        
-        fases_rota = []
-        for nome_fase in rota:
-            if nome_fase == "PCP":
-                d = pcp_dias
-            else:
-                d = overrides.get(nome_fase, fases_dias.get(nome_fase, 1))
-            fases_rota.append((nome_fase, d))
+        nomes_fases_rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
+
+    # Se a OF já foi emitida, calcular PCP exato da ordem entre emissão e semana oficial
+    if of_emitida and dt_emissao_of and semana_of:
+        fim_of = quarta_da_semana(semana_of)
+        dias_outras = sum(_obter_dias_fase(fn, 0) for fn in nomes_fases_rota if "PCP" not in fn.upper())
+        dias_uteis_totais = contar_dias_uteis_excia(dt_emissao_of, fim_of)
+        if dias_uteis_totais > dias_outras:
+            pcp_dias = dias_uteis_totais - dias_outras
+
+    # Montar fases_rota com a duração correta de cada fase
+    fases_rota = []
+    for f_nome in nomes_fases_rota:
+        d = _obter_dias_fase(f_nome, pcp_dias)
+        fases_rota.append((f_nome, d))
 
     # 4. Calcular cronograma principal forward
     def _calcular_fases_forward(lista_fases_dias, dt_inicio):
