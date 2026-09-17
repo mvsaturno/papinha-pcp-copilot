@@ -54,3 +54,8 @@ vm_access.md
 deploy_info.md
 *.key
 *.pem
+
+# Banco local de usuários (hashes de senha) e outros bancos SQLite
+data/*.db
+*.sqlite
+*.sqlite3
