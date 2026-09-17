@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestão de Usuários — Copiloto PCP Papinha</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --surface3: #222e47;
+      --border: #1e2d45;
+      --border2: #2a3f60;
+      --text: #e2e8f0;
+      --text-muted: #8899bb;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59,130,246,0.25);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.15);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.15);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.15);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 20px;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-title h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      border-color: var(--border2);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: var(--surface3);
+    }
+    .btn-danger {
+      background: var(--red-bg);
+      border-color: var(--red);
+      color: #fca5a5;
+    }
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    
+    /* Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .stat-card .val {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin-top: 4px;
+    }
+    .stat-card .lbl {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Tabela */
+    .card-table {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    .table-header {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .table-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    th {
+      background: rgba(11, 15, 26, 0.5);
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 14px 18px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .badge-admin { background: rgba(139, 92, 246, 0.2); color: #c084fc; border: 1px solid #a855f7; }
+    .badge-operador { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid #3b82f6; }
+    .badge-ativo { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+    .badge-inativo { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+    
+    .actions-cell {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 480px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+      animation: fadeIn 0.25s ease;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .modal-header h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    input[type="text"], input[type="email"], input[type="password"], select {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      display: none;
+      z-index: 2000;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <header>
+    <div class="header-title">
+      <span style="font-size:28px">⚙️</span>
+      <div>
+        <h1>Painel Administrativo &bull; Gestão de Usuários</h1>
+        <p style="font-size:12px; color:var(--text-muted)">Copiloto de Análise PCP — Papinha Baby</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a href="/" class="btn btn-secondary">← Voltar ao Copiloto PCP</a>
+      <a href="/auth/logout" class="btn btn-danger">🚪 Sair</a>
+    </div>
+  </header>
+
+  <!-- Estatísticas -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="lbl">Total de Usuários</div>
+      <div id="stat-total" class="val">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="lbl">Administradores</div>
+      <div id="stat-admins" class="val">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="lbl">Operadores Ativos</div>
+      <div id="stat-ativos" class="val">0</div>
+    </div>
+  </div>
+
+  <!-- Tabela de Usuários -->
+  <div class="card-table">
+    <div class="table-header">
+      <h2>👥 Usuários Cadastrados</h2>
+      <button onclick="abrirModalNovo()" class="btn btn-primary btn-sm">
+        + Cadastrar Novo Usuário
+      </button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Nome / Login</th>
+          <th>E-mail</th>
+          <th>Nível de Acesso</th>
+          <th>Status</th>
+          <th>Último Acesso</th>
+          <th style="text-align:right">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr>
+          <td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted)">
+            Carregando usuários...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Novo Usuário -->
+<div id="modal-novo" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Cadastrar Novo Usuário</h3>
+      <button class="modal-close" onclick="fecharModais()">&times;</button>
+    </div>
+    <form onsubmit="salvarNovoUsuario(event)">
+      <div class="form-group">
+        <label>Nome Completo</label>
+        <input type="text" id="novo-nome" placeholder="Ex: Alexandre (PCP)" required />
+      </div>
+      <div class="form-group">
+        <label>Nome de Usuário (Login)</label>
+        <input type="text" id="novo-username" placeholder="Ex: alexandre" required />
+      </div>
+      <div class="form-group">
+        <label>E-mail Corporativo</label>
+        <input type="email" id="novo-email" placeholder="alexandre@papinhababy.com.br" />
+      </div>
+      <div class="form-group">
+        <label>Nível de Acesso (Papel)</label>
+        <select id="novo-role">
+          <option value="operador">Operador (Acesso às Análises PCP)</option>
+          <option value="admin">Administrador (Acesso Total + Gestão de Usuários)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Senha Inicial</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="novo-senha" placeholder="Mínimo 6 caracteres" required />
+          <button type="button" class="btn btn-secondary btn-sm" onclick="gerarSenhaAleatoria('novo-senha')">Gerar</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Cadastrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Editar Usuário -->
+<div id="modal-editar" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Editar Usuário</h3>
+      <button class="modal-close" onclick="fecharModais()">&times;</button>
+    </div>
+    <form onsubmit="salvarEdicaoUsuario(event)">
+      <input type="hidden" id="edit-id" />
+      <div class="form-group">
+        <label>Nome de Usuário</label>
+        <input type="text" id="edit-username" disabled style="opacity:0.6; cursor:not-allowed;" />
+      </div>
+      <div class="form-group">
+        <label>Nome Completo</label>
+        <input type="text" id="edit-nome" required />
+      </div>
+      <div class="form-group">
+        <label>E-mail Corporativo</label>
+        <input type="email" id="edit-email" />
+      </div>
+      <div class="form-group">
+        <label>Nível de Acesso (Papel)</label>
+        <select id="edit-role">
+          <option value="operador">Operador (Acesso às Análises PCP)</option>
+          <option value="admin">Administrador (Acesso Total + Gestão de Usuários)</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Resetar Senha -->
+<div id="modal-senha" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Resetar Senha de Usuário</h3>
+      <button class="modal-close" onclick="fecharModais()">&times;</button>
+    </div>
+    <form onsubmit="salvarNovaSenha(event)">
+      <input type="hidden" id="senha-id" />
+      <div class="form-group">
+        <label>Usuário</label>
+        <input type="text" id="senha-username" disabled style="opacity:0.6; cursor:not-allowed;" />
+      </div>
+      <div class="form-group">
+        <label>Nova Senha</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="senha-nova" placeholder="Nova senha (mín. 6 dígitos)" required />
+          <button type="button" class="btn btn-secondary btn-sm" onclick="gerarSenhaAleatoria('senha-nova')">Gerar</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Atualizar Senha</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let USUARIOS = [];
+
+async function carregarUsuarios() {
+  try {
+    const res = await fetch('/api/admin/users');
+    if (res.status === 401 || res.status === 403) {
+      window.location.href = '/login';
+      return;
+    }
+    const data = await res.json();
+    USUARIOS = data.usuarios || [];
+    renderizarTabela();
+  } catch(e) {
+    mostrarToast('Erro ao carregar lista de usuários');
+  }
+}
+
+function renderizarTabela() {
+  const tbody = document.getElementById('users-tbody');
+  if (USUARIOS.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted)">Nenhum usuário cadastrado.</td></tr>`;
+    return;
+  }
+
+  let totalAdmins = 0;
+  let totalAtivos = 0;
+
+  tbody.innerHTML = USUARIOS.map(u => {
+    if (u.role === 'admin') totalAdmins++;
+    if (u.is_active === 1) totalAtivos++;
+
+    const lastLoginStr = u.last_login ? new Date(u.last_login).toLocaleString('pt-BR') : 'Nunca acessou';
+    const roleBadge = u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : '<span class="badge badge-operador">Operador</span>';
+    const statusBadge = u.is_active === 1 ? '<span class="badge badge-ativo">Ativo</span>' : '<span class="badge badge-inativo">Inativo</span>';
+    const btnStatusLabel = u.is_active === 1 ? 'Desativar' : 'Ativar';
+
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:600; color:#fff;">${u.name}</div>
+          <div style="font-size:11px; color:var(--text-muted);">@${u.username}</div>
+        </td>
+        <td>${u.email || '—'}</td>
+        <td>${roleBadge}</td>
+        <td>${statusBadge}</td>
+        <td style="font-size:12px; color:var(--text-muted);">${lastLoginStr}</td>
+        <td>
+          <div class="actions-cell">
+            <button onclick="abrirModalEditar(${u.id})" class="btn btn-secondary btn-sm" title="Editar">✏️ Editar</button>
+            <button onclick="abrirModalSenha(${u.id})" class="btn btn-secondary btn-sm" title="Resetar Senha">🔑 Senha</button>
+            <button onclick="alternarStatus(${u.id})" class="btn btn-secondary btn-sm" title="${btnStatusLabel}">${u.is_active === 1 ? '🔴' : '🟢'}</button>
+            <button onclick="excluirUsuario(${u.id})" class="btn btn-danger btn-sm" title="Excluir">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('stat-total').textContent = USUARIOS.length;
+  document.getElementById('stat-admins').textContent = totalAdmins;
+  document.getElementById('stat-ativos').textContent = totalAtivos;
+}
+
+function abrirModalNovo() {
+  document.getElementById('novo-nome').value = '';
+  document.getElementById('novo-username').value = '';
+  document.getElementById('novo-email').value = '';
+  document.getElementById('novo-role').value = 'operador';
+  document.getElementById('novo-senha').value = '';
+  gerarSenhaAleatoria('novo-senha');
+  document.getElementById('modal-novo').style.display = 'flex';
+}
+
+function abrirModalEditar(id) {
+  const u = USUARIOS.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('edit-id').value = u.id;
+  document.getElementById('edit-username').value = u.username;
+  document.getElementById('edit-nome').value = u.name;
+  document.getElementById('edit-email').value = u.email || '';
+  document.getElementById('edit-role').value = u.role;
+  document.getElementById('modal-editar').style.display = 'flex';
+}
+
+function abrirModalSenha(id) {
+  const u = USUARIOS.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('senha-id').value = u.id;
+  document.getElementById('senha-username').value = `${u.name} (@${u.username})`;
+  document.getElementById('senha-nova').value = '';
+  gerarSenhaAleatoria('senha-nova');
+  document.getElementById('modal-senha').style.display = 'flex';
+}
+
+function fecharModais() {
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+}
+
+function gerarSenhaAleatoria(inputId) {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$';
+  let s = '';
+  for (let i = 0; i < 10; i++) {
+    s += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  document.getElementById(inputId).value = s;
+}
+
+async function salvarNovoUsuario(e) {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('name', document.getElementById('novo-nome').value);
+  fd.append('username', document.getElementById('novo-username').value);
+  fd.append('email', document.getElementById('novo-email').value);
+  fd.append('role', document.getElementById('novo-role').value);
+  fd.append('password', document.getElementById('novo-senha').value);
+
+  const res = await fetch('/api/admin/users', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast('✓ Usuário criado com sucesso!');
+    fecharModais();
+    carregarUsuarios();
+  } else {
+    mostrarToast('❌ ' + (data.mensagem || 'Erro ao criar usuário'));
+  }
+}
+
+async function salvarEdicaoUsuario(e) {
+  e.preventDefault();
+  const id = document.getElementById('edit-id').value;
+  const fd = new FormData();
+  fd.append('name', document.getElementById('edit-nome').value);
+  fd.append('email', document.getElementById('edit-email').value);
+  fd.append('role', document.getElementById('edit-role').value);
+
+  const res = await fetch(`/api/admin/users/${id}`, { method: 'PUT', body: fd });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast('✓ Dados atualizados com sucesso!');
+    fecharModais();
+    carregarUsuarios();
+  } else {
+    mostrarToast('❌ ' + (data.mensagem || 'Erro ao atualizar'));
+  }
+}
+
+async function salvarNovaSenha(e) {
+  e.preventDefault();
+  const id = document.getElementById('senha-id').value;
+  const fd = new FormData();
+  fd.append('password', document.getElementById('senha-nova').value);
+
+  const res = await fetch(`/api/admin/users/${id}/reset-password`, { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast('✓ Senha redefinida com sucesso!');
+    fecharModais();
+  } else {
+    mostrarToast('❌ ' + (data.mensagem || 'Erro ao resetar senha'));
+  }
+}
+
+async function alternarStatus(id) {
+  const res = await fetch(`/api/admin/users/${id}/toggle-status`, { method: 'POST' });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast(data.mensagem);
+    carregarUsuarios();
+  } else {
+    mostrarToast('❌ ' + data.mensagem);
+  }
+}
+
+async function excluirUsuario(id) {
+  if (!confirm('Tem certeza que deseja excluir este usuário permanentemente?')) return;
+  const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast('✓ Usuário excluído com sucesso!');
+    carregarUsuarios();
+  } else {
+    mostrarToast('❌ ' + data.mensagem);
+  }
+}
+
+function mostrarToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+
+document.addEventListener('DOMContentLoaded', carregarUsuarios);
+</script>
+
+</body>
+</html>

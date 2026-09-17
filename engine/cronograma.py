@@ -19,6 +19,7 @@ from parsers.comum import (
     quarta_da_semana,
 )
 from api.fluxo_adapter import FluxoAdapter
+from api.setor_adapter import SetorAdapter
 
 
 def montar_cronograma(
@@ -29,7 +30,8 @@ def montar_cronograma(
 ) -> Cronograma:
     """
     Monta o cronograma draft para uma linha de pedido.
-    Detecta a rota pelo nome do artigo e calcula datas de cada fase.
+    Detecta a rota pelo nome do artigo ou via API e calcula datas de cada fase
+    usando os lead times dinâmicos dos setores.
     """
     fases_dias = cfg["fases_dias"]
     rotas_cfg = cfg["rotas"]
@@ -46,6 +48,7 @@ def montar_cronograma(
 
     # 2. Obter partes e códigos de fluxo via API ParteProdutoLista
     fluxo_adapter = FluxoAdapter()
+    setor_adapter = SetorAdapter()
     partes_produto = []
     if linha.codigo:
         try:
@@ -65,43 +68,6 @@ def montar_cronograma(
         except Exception:
             pass
 
-    def _obter_dias_fase(nome: str, pcp_dias_atual: Optional[int] = None) -> int:
-        p_dias = pcp_dias if pcp_dias_atual is None else pcp_dias_atual
-        n = nome.upper().replace("Ã", "A").replace("Ó", "O").replace("É", "E").replace("Á", "A")
-        if "PCP" in n:
-            return p_dias
-        if "ENCAIXE" in n and "AGUARDANDO" not in n:
-            return fases_dias.get("ENCAIXE", 1)
-        if "CORTE" in n and "CD" not in n:
-            return fases_dias.get("CORTE", 4)
-        if "COSTURA" in n and "QUAL" not in n and "PRE" not in n and "ACAB" not in n:
-            return fases_dias.get("COSTURA", 11)
-        if "LAVANDERIA" in n or "LAVACAO" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_LAVANDERIA", 1)
-            return fases_dias.get("LAVANDERIA", 10)
-        if "APLIQUE" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_APLIQUE", 1)
-            return fases_dias.get("APLIQUE", 8)
-        if "ESTAMPARIA NUCA" in n or "ESTAMPA NUCA" in n:
-            return fases_dias.get("ESTAMPARIA_NUCA", 4)
-        if "ESTAMPARIA" in n or "ESTAMPA" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_ESTAMPARIA", 1)
-            return fases_dias.get("ESTAMPARIA", 5)
-        if "ACAB" in n:
-            return fases_dias.get("ACAB_COST", 4)
-        if "PASSADORIA" in n:
-            return fases_dias.get("PASSADORIA", 4)
-        if "REVISAO" in n:
-            return fases_dias.get("REVISAO", 6)
-        if "EMBALAGEM" in n:
-            return fases_dias.get("EMBALAGEM", 4)
-        if "QUAL" in n or "CQ" in n:
-            return 1
-        return fases_dias.get(nome, 1)
-
     # Identificar nomes das fases da rota
     if fases_dinamicas:
         rota_nome = f"API ({fluxo_inferido})"
@@ -109,6 +75,15 @@ def montar_cronograma(
     else:
         rota_nome = _detectar_rota(linha.descricao, rotas_cfg)
         nomes_fases_rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
+
+    # Se a rota já possui etapas explícitas de TECELAGEM ou TINTURARIA, PCP é o tempo de liberação da ordem (2 dias)
+    tem_etapas_tecido = any("TECELAGEM" in f.upper() or "TINTURARIA" in f.upper() for f in nomes_fases_rota)
+    if tem_etapas_tecido and not (of_emitida and dt_emissao_of and semana_of):
+        pcp_dias = fases_dias.get("PCP_MIN", 2)
+
+    def _obter_dias_fase(nome: str, pcp_dias_atual: Optional[int] = None) -> int:
+        p_dias = pcp_dias if pcp_dias_atual is None else pcp_dias_atual
+        return setor_adapter.obter_lead_time_fase(nome, p_dias)
 
     # Se a OF já foi emitida, calcular PCP exato da ordem entre emissão e semana oficial
     if of_emitida and dt_emissao_of and semana_of:

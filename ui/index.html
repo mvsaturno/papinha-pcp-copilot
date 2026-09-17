@@ -198,6 +198,65 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Progress Box ───────────────────────────────────────── */
+    .progress-box {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      animation: fadeIn 0.3s ease;
+    }
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .progress-status-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .progress-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(59,130,246,0.25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    .progress-timer {
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--text-muted);
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .progress-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 8px;
+    }
+    .progress-hint b {
+      color: var(--text);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     /* ── Alertas globais ────────────────────────────────────── */
     #alertas-globais {
       display: none;
@@ -529,6 +588,275 @@
     /* ── Transitions ────────────────────────────────────────── */
     .fade-in { animation: fadeIn 0.3s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* ── Seção de Anotações do PCP (só visível na impressão) ── */
+    .print-anotacoes-box { display: none; }
+
+    /* ── Impressão para Comercial / Papel A4 ──────────────────── */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 8mm 8mm 8mm 8mm;
+      }
+      *, *:before, *:after {
+        box-sizing: border-box !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      html, body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+        font-size: 8.5pt !important;
+        line-height: 1.3 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .app {
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      header, .upload-panel, #btn-analisar-api, #api-progress, #empty-state, #btn-imprimir, .badge, .chevron, .partes-tabs, details.brutos, #avisos-leitura, #captcha-container {
+        display: none !important;
+      }
+      
+      /* Cabeçalho Corporativo de Impressão */
+      #acoes-topo {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        border-bottom: 2px solid #1e3a8a !important;
+        padding-bottom: 6px !important;
+        margin-bottom: 10px !important;
+      }
+      #print-header-left {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      #print-header-title {
+        color: #1e3a8a !important;
+        font-size: 13pt !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.2px !important;
+        margin: 0 !important;
+      }
+      #resumo-analise-topo {
+        font-size: 8.5pt !important;
+        color: #475569 !important;
+        font-weight: 600 !important;
+        margin-top: 2px !important;
+      }
+
+      /* Card principal */
+      .card {
+        background: #ffffff !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+        box-shadow: none !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        margin-bottom: 12px !important;
+        overflow: visible !important;
+      }
+      .card-header {
+        background: #f1f5f9 !important;
+        border-bottom: 1px solid #cbd5e1 !important;
+        padding: 8px 12px !important;
+        cursor: default !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        page-break-inside: avoid !important;
+      }
+      .veredito-badge {
+        font-size: 11pt !important;
+        padding: 4px 8px !important;
+        border-radius: 4px !important;
+      }
+      .veredito-badge.VERDE { background: #dcfce7 !important; color: #166534 !important; border: 1px solid #86efac !important; }
+      .veredito-badge.AMARELO { background: #fef9c3 !important; color: #854d0e !important; border: 1px solid #fde047 !important; }
+      .veredito-badge.VERMELHO { background: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fca5a5 !important; }
+
+      .card-title {
+        flex: 1 !important;
+      }
+      .card-title strong {
+        color: #0f172a !important;
+        font-size: 10.5pt !important;
+      }
+      .card-title span {
+        color: #475569 !important;
+        font-size: 8.5pt !important;
+      }
+      .card-meta {
+        gap: 14px !important;
+      }
+      .meta-item .val {
+        font-size: 9.5pt !important;
+        color: #0f172a !important;
+        font-weight: 700 !important;
+      }
+      .meta-item .lbl {
+        font-size: 7.5pt !important;
+        color: #64748b !important;
+      }
+
+      .card-body {
+        display: block !important;
+        background: #ffffff !important;
+        padding: 10px 12px !important;
+      }
+      .sugestao-box {
+        font-size: 9pt !important;
+        padding: 7px 10px !important;
+        border-radius: 4px !important;
+        margin-bottom: 8px !important;
+        page-break-inside: avoid !important;
+      }
+      .sugestao-box.verde { background: #f0fdf4 !important; border: 1px solid #86efac !important; color: #166534 !important; }
+      .sugestao-box.vermelho { background: #fef2f2 !important; border: 1px solid #fca5a5 !important; color: #991b1b !important; }
+      .sugestao-box.amarelo { background: #fffbeb !important; border: 1px solid #fde047 !important; color: #854d0e !important; }
+
+      .motivos-list {
+        font-size: 8pt !important;
+        margin: 6px 0 10px 0 !important;
+        padding-left: 18px !important;
+        color: #334155 !important;
+        page-break-inside: avoid !important;
+      }
+      .motivos-list li {
+        margin-bottom: 2px !important;
+      }
+
+      /* Duas Colunas: Cronograma e Capacidade */
+      .inner-sections {
+        display: grid !important;
+        grid-template-columns: 1.1fr 1fr !important;
+        gap: 10px !important;
+        margin-bottom: 10px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .inner-box {
+        background: #f8fafc !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 4px !important;
+        padding: 8px 10px !important;
+        color: #0f172a !important;
+      }
+      .inner-box h4 {
+        color: #1e293b !important;
+        font-size: 9pt !important;
+        font-weight: 700 !important;
+        margin-bottom: 6px !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        padding-bottom: 3px !important;
+      }
+
+      /* Tabela de Cronograma na Impressão */
+      .timeline {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+      }
+      .timeline-item {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 2px 0 !important;
+        border-bottom: 1px dotted #e2e8f0 !important;
+      }
+      .tl-dot { display: none !important; }
+      .tl-content {
+        display: flex !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+      }
+      .tl-nome {
+        font-size: 8pt !important;
+        font-weight: 600 !important;
+        color: #1e293b !important;
+      }
+      .tl-datas {
+        font-size: 8pt !important;
+        color: #475569 !important;
+        font-family: monospace !important;
+      }
+
+      /* Tabela de Capacidade na Impressão */
+      .cap-row {
+        display: flex !important;
+        justify-content: space-between !important;
+        font-size: 8pt !important;
+        padding: 2px 0 !important;
+        border-bottom: 1px dotted #e2e8f0 !important;
+      }
+      .cap-row.alvo {
+        font-weight: 700 !important;
+        color: #1e3a8a !important;
+      }
+
+      /* Tabela de Insumos Compacta e Estruturada */
+      .insumo-row {
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 4px 0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        font-size: 8pt !important;
+        gap: 2px !important;
+        page-break-inside: avoid !important;
+      }
+      .insumo-nome {
+        color: #0f172a !important;
+        font-size: 8pt !important;
+        font-weight: 500 !important;
+        line-height: 1.2 !important;
+      }
+      .insumo-nome strong {
+        color: #1e3a8a !important;
+      }
+      .insumo-tag {
+        font-size: 7.5pt !important;
+        padding: 1px 5px !important;
+        border-radius: 3px !important;
+        font-weight: 600 !important;
+      }
+      .insumo-meta {
+        font-size: 7.5pt !important;
+        color: #475569 !important;
+      }
+
+      /* Seção de Rabiscos & Decisão PCP/Comercial */
+      .print-anotacoes-box {
+        display: block !important;
+        margin-top: 10px !important;
+        border: 1.5px dashed #94a3b8 !important;
+        border-radius: 4px !important;
+        padding: 8px 10px !important;
+        background: #fafafa !important;
+        page-break-inside: avoid !important;
+      }
+      .print-anotacoes-header {
+        display: flex !important;
+        justify-content: space-between !important;
+        font-size: 8pt !important;
+        font-weight: 700 !important;
+        color: #334155 !important;
+        margin-bottom: 8px !important;
+      }
+      .print-linhas-pautadas {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 14px !important;
+        padding: 4px 0 !important;
+      }
+      .print-linha-pauta {
+        border-bottom: 1px solid #cbd5e1 !important;
+        height: 1px !important;
+        width: 100% !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -536,19 +864,26 @@
 
   <!-- Header -->
   <header>
-    <div class="logo">🧵</div>
-    <div class="header-text">
-      <h1>Copiloto de Análise PCP</h1>
-      <p>Papinha Baby</p>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div class="logo">🧵</div>
+      <div class="header-text">
+        <h1>Copiloto de Análise PCP</h1>
+        <p>Papinha Baby</p>
+      </div>
+      <span class="badge">Sprint 4 — API</span>
     </div>
-    <span class="badge">Sprint 4 — API</span>
+    <div id="user-header-info" style="display:flex; align-items:center; gap:10px; font-size:12px; flex-wrap:wrap;">
+      <span id="user-logged-name" style="color:var(--text); font-weight:600;">👤 Carregando...</span>
+      <a id="btn-admin-panel" href="/admin" style="display:none; padding:4px 10px; background:rgba(139,92,246,0.2); border:1px solid #a855f7; border-radius:6px; color:#c084fc; font-weight:600; text-decoration:none; transition:all 0.2s;">⚙️ Painel Admin</a>
+      <a href="/auth/logout" style="padding:4px 10px; background:rgba(239,68,68,0.15); border:1px solid var(--red); border-radius:6px; color:#fca5a5; font-weight:600; text-decoration:none; transition:all 0.2s;">🚪 Sair</a>
+    </div>
   </header>
 
   <!-- Input Panel -->
   <div class="upload-panel">
     <h2>🔍 Consultar Pedido</h2>
     <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">Digite o número do pedido de venda para iniciar a análise completa via API Excia.</p>
-    <div style="display:flex;gap:10px;margin:20px 0;align-items:center;">
+    <div style="display:flex;gap:10px;margin:20px 0 12px 0;align-items:center;">
       <input
         type="text"
         id="input-numero-pedido"
@@ -570,11 +905,33 @@
         <span id="btn-text-api">Analisar via API</span>
       </button>
     </div>
-    <div id="api-progress" style="display:none; font-size:12px; color:var(--accent); margin-top:-10px; margin-bottom:8px; letter-spacing:0.2px;"></div>
+
+    <div id="api-progress" class="progress-box" style="display:none;">
+      <div class="progress-header">
+        <div class="progress-status-line">
+          <span class="progress-spinner"></span>
+          <span id="api-progress-text" class="progress-text">Processando análise no Excia...</span>
+        </div>
+        <span id="api-progress-timer" class="progress-timer">⏱️ 00:00</span>
+      </div>
+      <div class="progress-hint">
+        💡 <b>Aviso:</b> Na primeira execução ou para pedidos com muitas OFs, a coleta e consolidação dos dados pode levar alguns minutos. O sistema está processando normalmente.
+      </div>
+    </div>
   </div>
 
   <!-- Resultados -->
   <div id="resultados">
+    <div id="acoes-topo" style="display:none; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h3 id="print-header-title" style="font-size:16px; font-weight:700; color:var(--text);">📋 Relatório de Análise Comercial PCP</h3>
+        <div id="resumo-analise-topo" style="font-size:12px; color:var(--text-muted); margin-top:2px;"></div>
+      </div>
+      <button id="btn-imprimir" onclick="window.print()" style="display:flex; align-items:center; gap:6px; padding:9px 18px; background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; box-shadow:var(--shadow);">
+        <span>🖨️</span> Imprimir Relatório Comercial
+      </button>
+    </div>
+
     <div id="empty-state">
       <div class="empty-icon">📈</div>
       <p>Digite o número do Pedido para iniciar a análise.</p>
@@ -675,6 +1032,27 @@ function atualizarBotao() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   Usuário & Autenticação
+══════════════════════════════════════════════════════════ */
+async function carregarDadosUsuarioLogado() {
+  try {
+    const res = await fetch('/auth/me');
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    const user = await res.json();
+    if (user && user.name) {
+      document.getElementById('user-logged-name').textContent = `👤 ${user.name}`;
+      if (user.role === 'admin') {
+        document.getElementById('btn-admin-panel').style.display = 'inline-block';
+      }
+    }
+  } catch(e) {}
+}
+window.addEventListener('DOMContentLoaded', carregarDadosUsuarioLogado);
+
+/* ═══════════════════════════════════════════════════════════
    Análise
 ══════════════════════════════════════════════════════════ */
 async function executarAnaliseAPI() {
@@ -682,7 +1060,9 @@ async function executarAnaliseAPI() {
   const btn = document.getElementById('btn-analisar-api');
   const icon = document.getElementById('btn-icon-api');
   const text = document.getElementById('btn-text-api');
-  const progress = document.getElementById('api-progress');
+  const progressBox = document.getElementById('api-progress');
+  const progressText = document.getElementById('api-progress-text');
+  const progressTimer = document.getElementById('api-progress-timer');
   
   const numero = inputNumero.value.trim();
   if (!numero || !/^\d+$/.test(numero)) {
@@ -695,22 +1075,31 @@ async function executarAnaliseAPI() {
   btn.style.opacity = '0.7';
   icon.outerHTML = `<div class="spinner" id="btn-icon-api"></div>`;
   text.textContent = 'Analisando...';
-  progress.style.display = 'block';
   
-  // Mensagens de progresso para indicar que está trabalhando
-  const steps = [
-    '⏳ Buscando pedido no Excia...',
-    '📦 Verificando OFs vinculadas...',
-    '🧵 Carregando ficha técnica dos artigos...',
-    '📊 Calculando insumos e capacidade...',
-    '✅ Finalizando análise...'
-  ];
-  let stepIdx = 0;
-  progress.textContent = steps[0];
-  const progressInterval = setInterval(() => {
-    stepIdx = (stepIdx + 1) % steps.length;
-    progress.textContent = steps[stepIdx];
-  }, 3000);
+  // Inicializar indicador de progresso com timer em tempo real
+  let segundosDecorridos = 0;
+  progressText.textContent = 'Conectando ao Excia e localizando pedido...';
+  progressTimer.textContent = '⏱️ 00:00';
+  progressBox.style.display = 'block';
+
+  const startTime = Date.now();
+  const timerInterval = setInterval(() => {
+    segundosDecorridos = Math.floor((Date.now() - startTime) / 1000);
+    const mins = String(Math.floor(segundosDecorridos / 60)).padStart(2, '0');
+    const secs = String(segundosDecorridos % 60).padStart(2, '0');
+    progressTimer.textContent = `⏱️ ${mins}:${secs}`;
+
+    // Mensagens realistas e progressivas
+    if (segundosDecorridos < 12) {
+      progressText.textContent = 'Conectando ao Excia e localizando pedido...';
+    } else if (segundosDecorridos < 30) {
+      progressText.textContent = 'Carregando Ordens de Fabricação (OFs) e fichas técnicas...';
+    } else if (segundosDecorridos < 60) {
+      progressText.textContent = 'Calculando necessidades de insumos, MRP e capacidades...';
+    } else {
+      progressText.textContent = 'Consolidando análise e estruturando resultados...';
+    }
+  }, 1000);
 
   const fd = new FormData();
   fd.append('numero_pedido', numero);
@@ -722,20 +1111,36 @@ async function executarAnaliseAPI() {
     try {
       data = JSON.parse(rawText);
     } catch(err) {
-      clearInterval(progressInterval);
-      progress.style.display = 'none';
+      clearInterval(timerInterval);
+      progressBox.style.display = 'none';
       renderErroGeral('Erro de resposta do servidor (HTTP ' + res.status + '): ' + (rawText.slice(0, 150) || 'Falha ao processar resposta.'));
       return;
     }
 
-    clearInterval(progressInterval);
-    progress.style.display = 'none';
+    clearInterval(timerInterval);
+    progressBox.style.display = 'none';
+
+    if (res.status === 400 || res.status === 401 || res.status === 429) {
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+      if (data.erros_entrada && data.erros_entrada.length > 0) {
+        renderErroGeral(data.erros_entrada.map(e => e.mensagem).join('<br>'));
+      } else {
+        renderErroGeral('Erro na solicitação (HTTP ' + res.status + ')');
+      }
+      return;
+    }
+
     renderizar(data);
   } catch(e) {
-    clearInterval(progressInterval);
-    progress.style.display = 'none';
+    clearInterval(timerInterval);
+    progressBox.style.display = 'none';
     renderErroGeral('Erro de comunicação com o servidor: ' + e.message);
   } finally {
+    clearInterval(timerInterval);
+    progressBox.style.display = 'none';
     btn.disabled = false;
     btn.style.opacity = '1';
     const iconEl = document.getElementById('btn-icon-api');
@@ -813,14 +1218,22 @@ function renderizar(data) {
 
   // Cards de pedido
   const container = document.getElementById('cards-container');
+  const acoesTopo = document.getElementById('acoes-topo');
+  const resumoTopo = document.getElementById('resumo-analise-topo');
   container.innerHTML = '';
 
   if (!data.pedidos || data.pedidos.length === 0) {
+    acoesTopo.style.display = 'none';
     if (!data.erros_entrada?.length) {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:20px 0">Nenhum pedido encontrado na análise.</p>';
     }
     return;
   }
+
+  acoesTopo.style.display = 'flex';
+  const pedNum = data.pedidos[0]?.numero_pedido || '';
+  const clienteNome = data.pedidos[0]?.cliente || '';
+  resumoTopo.textContent = `Pedido: ${pedNum} ${clienteNome ? '— ' + clienteNome : ''} | ${data.pedidos.length} artigo(s) analisado(s) em ${new Date().toLocaleDateString('pt-BR')}`;
 
   // Ordenar: VERMELHO → AMARELO → VERDE → CANCELADO
   const ordem = { VERMELHO: 0, AMARELO: 1, VERDE: 2, CANCELADO: 3 };
@@ -932,8 +1345,24 @@ function criarCard(p, idx) {
       const dispStr = ins.disponivel_em ? ` — disponível ${dateFmt(ins.disponivel_em)}` : '';
       const bloqStr = ins.bloqueante ? `<span class="insumo-tag tag-bloqueante">BLOQUEANTE</span>` : '';
       const divCor = ins.cor_divergente ? `<span class="insumo-tag" style="background:var(--red-dim);color:var(--red);border-color:var(--red);font-weight:600">⚠️ Cor Divergente (${ins.nome_cor})</span>` : '';
+      
+      // Diagnóstico da Cadeia de Suprimentos em Cascata (Malha Tinta ➔ Malha Crua ➔ Fio)
+      let cascataHtml = '';
+      if (ins.cascata_info) {
+        const c = ins.cascata_info;
+        if (c.tem_crua) {
+          cascataHtml = `<div style="margin-top:5px; font-size:11px; color:#60A5FA; background:rgba(59,130,246,0.1); padding:4px 8px; border-radius:4px; border:1px solid rgba(59,130,246,0.25);">
+            🧵 <b>Malha Crua no Estoque:</b> ${qtdFmt(c.saldo_crua)} kg ${c.atende_via_tinturaria ? '(✓ Viável atender via Tinturaria)' : `(⚠️ Faltam ${qtdFmt(c.falta_crua)} kg)`}
+          </div>`;
+        } else if (c.necessita_tecelagem_fio) {
+          cascataHtml = `<div style="margin-top:5px; font-size:11px; color:#FBBF24; background:rgba(234,179,8,0.1); padding:4px 8px; border-radius:4px; border:1px solid rgba(234,179,8,0.25);">
+            ⚠️ <b>Sem saldo de malha tinta/crua:</b> Necessita ordem de Tecelagem + Tinturaria com fios da fiação.
+          </div>`;
+        }
+      }
+
       return `<div class="insumo-row">
-        <div class="insumo-nome">${ins.descricao || ins.cod_insumo}</div>
+        <div class="insumo-nome"><strong>[${ins.cod_insumo}]</strong> ${ins.descricao || ''}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
           <span class="insumo-tag ${statusCls}">${statusLabel}${dispStr}</span>
           ${bloqStr}
@@ -941,6 +1370,7 @@ function criarCard(p, idx) {
           <span class="insumo-tag" style="background:var(--surface2);color:var(--text-muted)">Fase: ${ins.fase_consumo}</span>
         </div>
         <div class="insumo-meta">Necessário: ${qtdFmt(ins.necessario)} | Estoque: ${qtdFmt(ins.aloc_estoque)}</div>
+        ${cascataHtml}
       </div>`;
     }).join('');
   } else {
@@ -1016,6 +1446,20 @@ function criarCard(p, idx) {
         <h4>🧵 Insumos</h4>
         ${insHtml}
       </div>
+
+      <!-- Bloco exclusivo de anotações do PCP / Comercial na impressão -->
+      <div class="print-anotacoes-box">
+        <div class="print-anotacoes-header">
+          <span>📝 <b>PARECER DO PCP & AJUSTES COMERCIAIS (Anotações com Caneta / Acordo de Entrega):</b></span>
+          <span>Data: ____/____/2026 | Responsável: ________________________</span>
+        </div>
+        <div class="print-linhas-pautadas">
+          <div class="print-linha-pauta"></div>
+          <div class="print-linha-pauta"></div>
+          <div class="print-linha-pauta"></div>
+        </div>
+      </div>
+
       <details class="brutos">
         <summary>🔍 Dados brutos (auditoria)</summary>
         <div class="brutos-content">${brutosJson}</div>

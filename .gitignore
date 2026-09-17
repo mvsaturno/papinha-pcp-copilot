@@ -46,7 +46,11 @@ htmlcov/
 desktop.ini
 Thumbs.db
 
-# Local development
+# Local development & Deployment secrets
 .env
 .env.local
 *.log
+vm_access.md
+deploy_info.md
+*.key
+*.pem

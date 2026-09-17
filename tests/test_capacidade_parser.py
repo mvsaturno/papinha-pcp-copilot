@@ -22,20 +22,20 @@ def cap():
 class TestCapacidadeParser:
 
     def test_numero_de_periodos(self, cap):
-        """Deve extrair 29 períodos conforme golden test."""
-        assert len(cap.periodos) == 29, f"Esperado 29, got {len(cap.periodos)}"
+        """Deve extrair 17 períodos conforme a seção oficial de Resumo por Periodo."""
+        assert len(cap.periodos) == 17, f"Esperado 17, got {len(cap.periodos)}"
 
     def test_sem_2634(self, cap):
-        """cap[2634] == 91034 (golden value do ROADMAP)."""
-        assert cap.periodos.get(2634) == 91034, f"Got {cap.periodos.get(2634)}"
+        """cap[2634] == 45046 (valor oficial do Resumo por Período)."""
+        assert cap.periodos.get(2634) == 45046, f"Got {cap.periodos.get(2634)}"
 
     def test_sem_2637(self, cap):
-        """cap[2637] == 11433 (golden value do ROADMAP)."""
-        assert cap.periodos.get(2637) == 11433, f"Got {cap.periodos.get(2637)}"
+        """cap[2637] == 2917 (valor oficial do Resumo por Período)."""
+        assert cap.periodos.get(2637) == 2917, f"Got {cap.periodos.get(2637)}"
 
-    def test_sem_2652(self, cap):
-        """cap[2652] == 3102 (golden value do ROADMAP)."""
-        assert cap.periodos.get(2652) == 3102, f"Got {cap.periodos.get(2652)}"
+    def test_sem_2649(self, cap):
+        """cap[2649] == 3102 (valor oficial do Resumo por Período)."""
+        assert cap.periodos.get(2649) == 3102, f"Got {cap.periodos.get(2649)}"
 
     def test_periodos_ordenados(self, cap):
         """Períodos devem estar ordenados."""

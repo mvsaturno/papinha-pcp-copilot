@@ -27,6 +27,7 @@ class LinhaPedido:
     dt_entrega_item: Optional[date] = None
     fluxo_id: Optional[str] = None
     qtde_faturada: float = 0.0
+    pecas_produzir: float = 0.0
 
 
 @dataclass
@@ -84,6 +85,9 @@ class BlocoInsumo:
     produtos: list[ProdutoMRP] = field(default_factory=list)
     parse_ok: bool = True
     avisos_reconciliacao: list[str] = field(default_factory=list)
+    estoque_cru: float = 0.0
+    estoque_fio: float = 0.0
+    cascata_info: Optional[dict] = None
 
 
 # ──────────────────────────────────────────────
@@ -123,6 +127,9 @@ class MatchInsumo:
     bloqueante: bool = False
     cor_divergente: bool = False
     avisos: list[str] = field(default_factory=list)
+    estoque_cru: float = 0.0
+    estoque_fio: float = 0.0
+    cascata_info: Optional[dict] = None
 
 
 @dataclass
