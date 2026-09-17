@@ -31,13 +31,13 @@ Este documento tem três partes:
 
 **Agravante confirmado na documentação da API.** `GET /SetorLista` devolve apenas `codigo`, `descricao`, `tipo`; `GET /Fluxo/:codigo` devolve `setores[]` com `setor`, `descricao`, `ordem`. **Não há campo de dias/prazo por setor em nenhum endpoint documentado.** O "18 dias cadastrado no sistema" que o gestor vê numa tela do Excia não é exposto pela API (pelo menos não pela documentação que temos). **[VALIDAR NA VM]**: chamar `SetorLista` e `Fluxo/{fluxo do 107487}` e confirmar que não vem nenhum campo extra não documentado.
 
-**Consequência de produto.** O gestor perguntou "onde eu mudo isso". Hoje a resposta é "no código". Precisa existir uma tela/arquivo de configuração de lead times por setor, semeada com os valores do Excia, e uma única função que a engine consulte.
+**Decisão (17/09, Marcos):** os lead times têm que vir do Excia via API, porque o PCP os cadastra lá. A documentação que temos não mostra o campo, então o passo 1 da Sprint 5 começa por uma exploração na VM com `scripts/explorar_lead_times.py`, que procura campos não documentados em `Setor/:codigo`, `Fluxo/:codigo`, `ParteProdutoLista` e `OPLista`, e testa `Pedido/Fluxo?numero=107487` (datas planejadas por setor). Se nenhum endpoint expuser os dias, há duas saídas, em ordem: (a) perguntar ao suporte da Excia qual endpoint devolve o prazo por setor do fluxo (o mesmo canal do e-mail da Sprint 3); (b) derivar os lead times do cronograma oficial da OF que o Excia calcula, quando `Pedido/Fluxo` ou `BuscarMovimentacaoOP` trouxerem as datas por setor. O arquivo `config/lead_times.yaml` vira cache/fallback com data de sincronização, não a fonte primária, e a tela de admin mostra "sincronizado do Excia em dd/mm" com botão de ressincronizar.
 
 ### A2. Feriados e férias coletivas ignorados
 
 **Causa.** `parsers/comum.py:140` tem `FERIADOS_NACIONAIS` fixo (feriados nacionais 2025–2027, incluindo carnaval). Não há férias coletivas, pontes nem feriados municipais. `eh_dia_util()` (`comum.py:161`) só olha esse conjunto.
 
-**Confirmado na documentação da API:** zero ocorrências de "feriado", "calendário" ou "férias" em `Docs_Excia.txt`. O calendário cadastrado no Excia não é acessível via API.
+**Confirmado na documentação da API:** zero ocorrências de "feriado", "calendário" ou "férias" em `Docs_Excia.txt`. Como o PCP também cadastra isso no Excia, a mesma exploração do item A1 procura o calendário (o script registra qualquer chave com "feriad", "calend", "parada" ou "ferias" nas respostas) e, se o cronograma oficial da OF vier por `Pedido/Fluxo`, as paradas ficam visíveis como buracos entre `dt_prev` de um setor e `dt_inicio` do seguinte. Se nada vier, o calendário fica em `config/calendario.yaml` com tela de admin, e a pergunta vai para o suporte da Excia junto com a dos lead times.
 
 **Impacto no 107487.** A simulação da engine coloca COSTURA de 16/12/2026 a 04/01/2027, atravessando o fim de ano como se fossem dias úteis normais. Com férias coletivas (ex.: 21/12 a 04/01) todo o início do cronograma recua duas semanas. É exatamente "divergiu demais as datas de início da OF".
 
@@ -53,13 +53,13 @@ Este documento tem três partes:
 
 `recuar_dias_uteis_excia()` (`comum.py:165`) usa a convenção "a saída de uma etapa é a entrada da seguinte": para fases intermediárias os N dias contados são os **posteriores** à data de início exibida (o dia de início pertence à fase anterior). Só a última fase (`eh_ultima=True`) conta o próprio dia. Resultado: o rótulo diz N, mas quem lê o intervalo inclusivo conta N+1, exceto na Embalagem. O gestor contou inclusivo e está certo em apontar a inconsistência de apresentação.
 
-**Decisão necessária [VALIDAR NA VM]:** comparar com o cronograma impresso da OF do 107487 no Excia. Se o Excia imprime "entrada 12/01 – saída 20/01" para Revisão com 6 dias, mantemos as datas e ajustamos a apresentação (rótulo "entrada → saída", coluna "1º dia trabalhado"). Se o Excia imprime 13/01–20/01, deslocamos o início exibido em um dia útil. Em ambos os casos o rótulo tem que bater com a contagem inclusiva entre as datas mostradas.
+**Decisão necessária [VALIDAR NA VM]:** comparar com o cronograma que o **Excia** calcula para a OF 270363 (não com o relatório da nossa aplicação, que reproduz a nossa própria convenção). A fonte preferida é `GET /Pedido/Fluxo?numero=107487` (campos `dt_inicio`, `dt_prev`, `dt_fim` por setor); se vier vazio, a tela de cronograma da OF no Excia, impressa pelo PCP. Se o Excia imprime "entrada 12/01 – saída 20/01" para Revisão com 6 dias, mantemos as datas e ajustamos a apresentação (rótulo "entrada → saída", coluna "1º dia trabalhado"). Se o Excia imprime 13/01–20/01, deslocamos o início exibido em um dia útil. Em ambos os casos o rótulo tem que bater com a contagem inclusiva entre as datas mostradas.
 
 ### A4. Sugestão de nova data não diz a semana de produção
 
 **Causa.** `engine/analise.py:_montar_sugestao` (linha ~330) monta apenas: "Data inviável — sugerir ao comercial nova entrega na semana 2705 (05/02/2027)". A semana de produção (2704, fim 29/01/2027) só aparece no fim do cronograma. Além disso a nova entrega é calculada como `semana_sugerida + 1` (`aass_add(semana_sug, 1)`), enquanto a regra da casa é "produção = entrega − 2". Com a regra, a nova entrega seria **2706**, não 2705.
 
-**Decisão do gestor:** ao propor nova data ao comercial, usar +1 (consome a margem interna, é o que ele aceitou no feedback) ou +2 (regra padrão)? Recomendo exibir as duas: "Produção termina na semana 2704 (29/01/2027). Nova entrega: 2705 no mínimo (consome margem) / 2706 pela regra −2."
+**Decisão (17/09, Marcos):** a regra é **entrega = produção + 1 semana**. O PCP tem margem para sugerir até produção + 2; acima disso precisa de autorização do gestor. Portanto o cálculo atual (+1) está certo; o que falta é o texto dizer a semana de produção e a data de término, e a UI destacar "Semana de produção". Registrar a regra em `regras.yaml` como `geral.semanas_entre_producao_e_entrega: 1` e `geral.semanas_maximo_sem_autorizacao: 2`.
 
 ### A5. Bug de virada de ano na zona do veredito (relevante agora, pedidos de jan/2027)
 
@@ -86,6 +86,16 @@ Secundário: `insumos._e_bloqueante` compara `fase.nome == ins.fase_consumo`; os
 - **Ambiente:** no sandbox foi preciso `pip install cffi` para o `pdfplumber` importar (`cryptography` do sistema sem `_cffi_backend`). Não afeta a VM (Docker instala do `requirements.txt`).
 - **Segurança:** o token do Excia está em texto puro no `.env` do Drive (fora do git, correto). A nota de segurança do ROADMAP Sprint 4 (rotacionar o token) continua pendente.
 - **`OPLista` é carregada inteira a cada 30 min** (até 20 páginas) só para descobrir OFs por pedido e capacidade. Funciona, mas é o ponto de latência da análise; a camada conversacional vai precisar de cache mais fino (ver Parte C).
+
+### A9. Achados novos no relatório impresso do 107487 (17/09/2026)
+
+O PDF gerado pela aplicação para o pedido 107487 (OF 270363, semana 2704) mostra três problemas que o gestor não citou:
+
+- **Malha duplicada em três linhas.** `[03008234] M/M TINTA PT 30/1 GREED` aparece três vezes, com "Necessário" 305, 12 e 0,25 kg, cada uma com "FALTA — disponível 24/09". É o mesmo insumo e a mesma cor, vindo de três linhas da ficha técnica (faixas/partes diferentes). `MrpAdapter` agrega o `BlocoInsumo` por insumo+cor, mas anexa um `ProdutoMRP` por linha da ficha, e `matching.casar_com_mrp` gera um `MatchInsumo` por `ProdutoMRP`. Deve ser uma linha só: 317,25 kg necessários.
+- **"Cor Divergente ()" falso e motivo "pedido (00001 PRETO) vs MRP (0 )".** O código de cor do insumo (`cor_i`, domínio de materiais) está sendo comparado com o código de cor do produto (domínio do pedido). São tabelas diferentes, e o próprio Alexandre explicou que os códigos nunca coincidem. Via API a comparação é sem sentido: `_resolver_cor_insumo` já traduz cor do produto → cor do insumo pela ficha técnica. O sinal útil é outro: quando a cor do produto **não existe** na lista de cores da ficha e o adapter cai no fallback "primeira cor", isso sim deve virar aviso ("cor 00001 não cadastrada na ficha técnica deste insumo; usando cor X").
+- **Sexta versus quarta.** A caixa verde diz "Produzir na semana 2704 (termina 29/01/2027)", mas o cronograma oficial termina em 27/01/2027, quarta-feira, que é a âncora usada para OF emitida (`quarta_da_semana`). `_montar_sugestao` sempre usa `sexta_da_semana`. Quando há OF, a data da sugestão tem que ser a mesma do cronograma.
+
+Também confirma A6 ao vivo: cinco insumos em FALTA, todos com "disponível 24/09/2026" (17/09 + 7 dias), inclusive a malha cuja própria cascata diz "necessita ordem de tecelagem + tinturaria".
 
 ### A8. O que a API do Excia oferece e ainda não usamos (útil para A3 e para o chat)
 
@@ -119,47 +129,45 @@ PASSO 0 — Sincronizar repositório
    .env e data/users.db continuam no .gitignore. Push.
 2. Corrigir a fixture/expectativa de tests/test_capacidade_parser.py. Suíte 100% verde.
 
-PASSO 1 — Lead times por setor: uma única fonte de verdade, editável
+PASSO 1 — Lead times por setor: Excia como fonte, yaml como cache
 Contexto: api/setor_adapter.py usa um dicionário fixo (TINTURARIA 20, LAVANDERIA 10, EMBALAGEM 4) e ignora
-o retorno de SetorLista; regras.yaml:fases_dias não é mais lido. A API do Excia NÃO expõe dias por setor
-(SetorLista devolve só codigo/descricao/tipo; Fluxo/:codigo devolve setores sem prazo).
-1. Criar config/lead_times.yaml com a estrutura:
+o retorno de SetorLista; regras.yaml:fases_dias não é mais lido. O PCP cadastra os dias por setor NO EXCIA,
+mas a documentação da API que temos não mostra esse campo (SetorLista/Setor/:codigo devolvem só
+codigo/descricao/tipo; Fluxo/:codigo devolve setores sem prazo).
+1. NA VM: `python scripts/explorar_lead_times.py 107487`. Ler o resumo e os JSON em
+   scripts/output_exploratorio/lead_times/. Procurar: (a) campos numéricos não documentados por setor em
+   Setor/:codigo, Fluxo/:codigo, ParteProdutoLista, OPLista; (b) datas por setor em Pedido/Fluxo e
+   BuscarMovimentacaoOP para a OF 270363. Registrar o resultado em NOTES.md.
+2. Se (a) existir: criar api/lead_time_adapter.py que lê esse campo e devolve {SETOR_NORMALIZADO: dias},
+   com cache de 24 h e ressincronização manual.
+   Se só (b) existir: o mesmo adapter deriva os dias por setor contando dias úteis entre dt_inicio e
+   dt_prev de cada setor no cronograma oficial da OF (usar a OF mais recente por fluxo; mediana quando
+   houver várias) e registra "derivado da OF nnnnnn em dd/mm".
+   Se nem (a) nem (b): PARAR e perguntar ao usuário; ele leva a pergunta ao suporte da Excia
+   ("qual endpoint devolve o prazo em dias cadastrado por setor no fluxo produtivo?"). Enquanto isso,
+   seguir com o yaml semeado pelos valores que o gestor informar.
+3. Criar config/lead_times.yaml como CACHE/FALLBACK, nunca como fonte primária:
      versao: 1
-     atualizado_em: "2026-09-17"
-     fonte: "Cadastro de setores do Excia informado pelo PCP"
-     setores:               # chave = nome normalizado (sem acento, maiúsculo), valor = dias úteis
-       PCP: 2
-       TECELAGEM: 5
-       TINTURARIA: 18
-       LAVANDERIA: 9
-       EMBALAGEM: 3
-       ... (todos os demais, partindo dos valores atuais de setor_adapter.py)
-     aliases:               # nome como vem da API Fluxo → chave acima
-       "ESTAMPA NUCA": ESTAMPARIA_NUCA
-       "QUAL. ESTAMPARIA": QUAL_ESTAMPARIA
-       "QUAL.": QUAL
-       ...
-   Antes de preencher, PERGUNTAR ao usuário a lista completa de dias por setor cadastrada no Excia
-   (o gestor citou 18/9/3 para tinturaria/lavanderia/embalagem; os outros precisam ser confirmados).
-2. Refatorar api/setor_adapter.py: remover _LEAD_TIMES_PADRAO_SETORES; SetorAdapter passa a
-   (a) carregar lead_times.yaml, (b) resolver o nome da fase via aliases + normalização, (c) devolver
-   também `fonte` e `atualizado_em` para exibir na UI. A cadeia de ifs por substring vira lookup
-   por alias com fallback documentado (log de aviso quando cair no fallback).
-3. Remover fases_dias de config/regras.yaml (manter só PCP_MIN e PCP_PADRAO, movidos para lead_times.yaml
-   como PCP_MIN/PCP_PADRAO) e atualizar engine/cronograma.py para não ler cfg["fases_dias"].
-4. Tela de configuração: em ui/admin.html (já protegida por role=admin), nova aba "Lead times por setor"
-   com tabela editável (setor, dias úteis, fonte/data) e endpoints GET/PUT /api/admin/lead-times que
-   leem/escrevem config/lead_times.yaml com validação (inteiro ≥ 0) e registram usuário+data da alteração.
-   Invalidar o cache do SetorAdapter após salvar.
-5. No card do cronograma (index.html), ao lado de cada fase, tooltip "dias úteis conforme cadastro
-   (atualizado em dd/mm/aaaa)". No rodapé do cronograma: "Lead times: cadastro interno de dd/mm/aaaa".
-6. Teste: montar_cronograma com lead_times injetados (TINTURARIA 18 etc.) e verificar as durações das fases.
-7. [OPCIONAL, só se houver tempo] scripts/calibrar_lead_times.py: para N OFs concluídas
-   (OPLista situacao != P), buscar BuscarMovimentacaoOP por setor, calcular a mediana de dias úteis reais
-   por setor e imprimir uma tabela "cadastrado vs real" para o gestor decidir ajustes. Não grava nada.
+     sincronizado_em: "2026-09-17T10:00:00"
+     fonte: "excia:Fluxo" | "excia:Pedido/Fluxo (derivado)" | "manual"
+     setores: {PCP: 2, TECELAGEM: 5, TINTURARIA: 18, LAVANDERIA: 9, EMBALAGEM: 3, ...}
+     aliases: {"ESTAMPA NUCA": ESTAMPARIA_NUCA, "QUAL. ESTAMPARIA": QUAL_ESTAMPARIA, "QUAL.": QUAL, ...}
+4. Refatorar api/setor_adapter.py: remover _LEAD_TIMES_PADRAO_SETORES; resolver o nome da fase por alias +
+   normalização (sem a cadeia de ifs por substring); ordem de resolução: adapter do Excia → yaml → aviso
+   em log e 1 dia. Remover fases_dias de regras.yaml (manter só PCP_MIN/PCP_PADRAO, movidos para
+   lead_times.yaml) e limpar cfg["fases_dias"] em engine/cronograma.py.
+5. Tela de admin: aba "Lead times por setor" mostrando fonte e data de sincronização, botão
+   "Ressincronizar do Excia", e edição manual permitida apenas com justificativa (grava usuario+data+motivo).
+   Endpoints GET/POST /api/admin/lead-times e POST /api/admin/lead-times/sincronizar.
+6. No card do cronograma: rodapé "Lead times: Excia, sincronizado em dd/mm/aaaa" (ou "manual, por X em dd/mm").
+7. Testes: montar_cronograma com lead_times injetados; adapter com fixture JSON real salva no passo 1.
 
 PASSO 2 — Calendário: feriados, férias coletivas e paradas
 Contexto: parsers/comum.py tem FERIADOS_NACIONAIS fixo; não há endpoint de calendário na API do Excia.
+0. Antes de criar o yaml, checar nos JSON do passo 1 se apareceu alguma chave de calendário
+   (o script já grava tudo) e se o cronograma da OF em Pedido/Fluxo tem buracos entre setores que
+   coincidam com feriados/férias. Se o Excia expuser o calendário, o adapter do passo 1 também o lê e o
+   yaml abaixo vira cache, com a mesma tela de ressincronização.
 1. Criar config/calendario.yaml:
      feriados:                # datas únicas (nacionais + municipais)
        - {data: "2026-11-02", descricao: "Finados"}
@@ -184,9 +192,10 @@ Contexto: parsers/comum.py tem FERIADOS_NACIONAIS fixo; não há endpoint de cal
 PASSO 3 — Contagem de dias coerente com as datas exibidas
 Contexto: recuar_dias_uteis_excia usa "saída de uma fase = entrada da seguinte"; o rótulo (Nd) não bate
 com a contagem inclusiva entre as datas mostradas (Revisão 12/01→20/01 rotulada 6d, são 7 inclusivos).
-1. PRIMEIRO, na VM: chamar GET /Pedido/Fluxo?numero=107487 e GET /OPLista para a OF do 107487, e pedir ao
-   usuário o cronograma impresso dessa OF no Excia. Anotar em NOTES.md como o Excia apresenta
-   entrada/saída de uma fase (mesma data de saída da anterior? dia seguinte?).
+1. PRIMEIRO, usar a saída de scripts/explorar_lead_times.py (Pedido/Fluxo e BuscarMovimentacaoOP da
+   OF 270363). Se vierem datas por setor, anotar em NOTES.md como o EXCIA apresenta entrada/saída de uma
+   fase (mesma data de saída da anterior? dia seguinte?). Só se a API não trouxer, pedir ao usuário a tela
+   de cronograma da OF no Excia (não o relatório da nossa aplicação, que reflete a nossa convenção).
 2. Implementar conforme a resposta:
    - Se o Excia usa entrada = saída da anterior: manter as datas; renomear cabeçalhos para
      "Entrada → Saída" e mostrar entre parênteses "(N dias úteis)" calculando N a partir das datas
@@ -201,12 +210,16 @@ com a contagem inclusiva entre as datas mostradas (Revisão 12/01→20/01 rotula
 PASSO 4 — Sugestão explícita: semana de produção + nova entrega
 Contexto: engine/analise.py:_montar_sugestao só diz "sugerir ao comercial nova entrega na semana X" e
 calcula X = semana_sugerida + 1, enquanto a regra da casa é produção = entrega − 2.
-1. Adicionar em regras.yaml: geral.semanas_entre_producao_e_nova_entrega: 1  (documentar: 1 = consome a
-   margem interna; 2 = regra padrão entrega−2). PERGUNTAR ao usuário qual valor o gestor quer.
+1. Adicionar em regras.yaml: geral.semanas_entre_producao_e_entrega: 1 e
+   geral.semanas_maximo_sem_autorizacao: 2 (regra confirmada em 17/09: entrega = produção + 1; o PCP pode
+   sugerir até produção + 2; acima disso requer autorização do gestor). Usar esses valores em vez dos
+   literais em _montar_sugestao e _decidir_veredito.
 2. Reescrever _montar_sugestao para o caso inviável:
-   "❌ Semana alvo 2702 não atende. Produção sugerida: semana 2704 (término 29/01/2027).
+   "❌ Semana alvo 2702 não atende. Produção sugerida: semana 2704 (término 27/01/2027).
     Nova entrega a propor ao comercial: semana 2705 (05/02/2027)."
    e para o caso viável manter o formato atual, sempre citando a semana de produção e a data de término.
+   A data de término tem que ser a MESMA do cronograma exibido: quarta-feira quando há OF emitida
+   (quarta_da_semana), sexta na simulação pré-OF. Hoje a caixa diz 29/01 e o cronograma termina 27/01.
 3. No cabeçalho do card (index.html), adicionar um quarto indicador "Semana de produção" (semana_sugerida)
    ao lado de "Semana Alvo", com cor do veredito.
 4. Teste com o cenário do 107487: entrega 25/01/2027 → alvo 2702; sugerida 2704 → texto contém
@@ -244,6 +257,15 @@ UI imprime "disponível dd/mm"; para malha isso é falso (precisa tecelagem + ti
    QUAL_ESTAMPARIA.
 5. Testes: malha com estoque 0 e crua 0 → SEM_PREVISAO e nenhuma data no JSON; malha com crua suficiente
    → ESTIMATIVA com data = hoje + TINTURARIA dias úteis.
+6. Uma linha por insumo+cor: em engine/matching.casar_com_mrp, agrupar os ProdutoMRP do mesmo
+   (cod_insumo, cod_cor) somando `consumo` antes de criar o MatchInsumo. Hoje a malha 03008234 aparece
+   três vezes (305 + 12 + 0,25 kg) no relatório do 107487. Teste com fixture de ficha técnica com três
+   faixas do mesmo insumo → um único MatchInsumo com necessario = soma.
+7. "Cor Divergente" via API: remover a comparação bloco.cod_cor != linha.cor quando os dados vêm do
+   MrpAdapter (são domínios diferentes: cor do material vs cor do produto). Substituir pelo aviso
+   correto: MrpAdapter marca `cor_fallback=True` quando _resolver_cor_insumo não achou a cor do produto
+   na ficha e usou a primeira; a UI mostra "⚠️ cor 00001 não cadastrada na ficha deste insumo (usando X)".
+   Manter a checagem antiga apenas no caminho PDF (matching por OF do relatório MRP).
 
 PASSO 7 — Validação de ponta a ponta na VM
 1. Rodar /analisar-pedido para 107487 e para dois outros pedidos recentes; salvar o JSON em
@@ -396,10 +418,15 @@ ENTREGA MÍNIMA (MVP) = Fases 1, 2, 3 e 4.1–4.2. Fases 4.3–4.4 e 5 fecham a 
 
 ---
 
-## Checklist de perguntas para o gestor (necessárias antes/durante a Sprint 5)
+## Pendências (atualizado 17/09 após respostas do Marcos)
 
-1. Lista completa de dias por setor cadastrada no Excia (todos os setores, não só tinturaria/lavanderia/embalagem).
-2. Datas das férias coletivas 2026/27 e demais paradas/pontes cadastradas; feriados municipais.
-3. Cronograma impresso da OF do pedido 107487 (para fechar a convenção entrada/saída, item A3).
-4. Ao propor nova data ao comercial: produção + 1 semana (consome margem) ou + 2 (regra padrão)?
-5. Autorizar a rotação do token da API (recomendação de segurança pendente desde a Sprint 4).
+Resolvidas: regra de nova entrega (+1, máximo +2 sem autorização); token da API já rotacionado; cronograma
+da aplicação para o 107487 já em mãos (PDF de 17/09, OF 270363).
+
+1. **Rodar `scripts/explorar_lead_times.py 107487` na VM** e me enviar a pasta
+   `scripts/output_exploratorio/lead_times/`. Isso decide se lead times e calendário vêm da API (caminho A)
+   ou se a pergunta vai para o suporte da Excia (caminho B).
+2. **Ao gestor, enquanto isso:** a tabela completa de dias por setor e as datas das férias coletivas/pontes,
+   para semear o cache mesmo no caminho A (serve de conferência).
+3. **Se o caminho B se confirmar:** e-mail ao suporte da Excia perguntando qual endpoint devolve (a) o prazo
+   em dias cadastrado por setor no fluxo produtivo e (b) o calendário de feriados/paradas.

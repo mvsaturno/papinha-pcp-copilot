@@ -59,3 +59,6 @@ deploy_info.md
 data/*.db
 *.sqlite
 *.sqlite3
+
+# Saída de scripts exploratórios (JSON bruto da API)
+scripts/output_exploratorio/
