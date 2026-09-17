@@ -198,6 +198,19 @@ def avancar_dias_uteis_excia(data_entrada: date, duracao_dias: int) -> date:
     return cur
 
 
+def contar_dias_uteis_excia(data_inicio: date, data_fim: date) -> int:
+    """Conta a quantidade de dias úteis entre data_inicio e data_fim."""
+    if data_inicio >= data_fim:
+        return 0
+    cur = data_inicio
+    dias = 0
+    while cur < data_fim:
+        cur += timedelta(days=1)
+        if eh_dia_util(cur):
+            dias += 1
+    return dias
+
+
 def aass_add(aass: int, n_semanas: int) -> int:
     """
     Soma n_semanas ao período AASS, cruzando ano corretamente.

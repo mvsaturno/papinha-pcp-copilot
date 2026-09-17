@@ -15,7 +15,7 @@ from typing import Optional
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,6 +27,19 @@ from parsers.capacidade_parser import parse_capacidade
 from engine.models import ResultadoAnalise, TipoPDF
 from engine.analise import analisar
 from engine.orquestrador import analisar_pedido_por_numero
+from api.security import validar_google_recaptcha, verificar_rate_limit
+from api.user_service import (
+    autenticar_usuario,
+    gerar_token_sessao,
+    validar_token_sessao,
+    listar_usuarios,
+    criar_usuario,
+    atualizar_usuario,
+    resetar_senha,
+    alternar_status_usuario,
+    excluir_usuario,
+)
+from fastapi.responses import RedirectResponse
 
 # ── Configuração ─────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -55,9 +68,86 @@ async def startup_event():
     threading.Thread(target=_aquecer, daemon=True).start()
 
 
-# ── Servir o HTML ───────────────────────────────────────────────────────────
+# ── Helpers de Autenticação ──────────────────────────────────────────────────
+def obter_usuario_logado(request: Request) -> Optional[dict]:
+    """Retorna os dados do usuário autenticado a partir do cookie de sessão."""
+    token = request.cookies.get("session_token")
+    if not token:
+        return None
+    return validar_token_sessao(token)
+
+
+# ── Rotas de Autenticação (Auth Wall) ─────────────────────────────────────────
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Serve a tela de login. Redireciona para / se já estiver logado."""
+    if obter_usuario_logado(request):
+        return RedirectResponse(url="/", status_code=303)
+    login_html = BASE_DIR / "ui" / "login.html"
+    return HTMLResponse(content=login_html.read_text(encoding="utf-8"))
+
+
+@app.post("/auth/login")
+async def auth_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    g_recaptcha_response: Optional[str] = Form(default=None, alias="g-recaptcha-response"),
+):
+    """Autentica o usuário, valida o reCAPTCHA e gera o cookie de sessão seguro."""
+    ip_cliente = request.client.host if request.client else "127.0.0.1"
+
+    # 1. Validar Google reCAPTCHA v2
+    if g_recaptcha_response is not None:
+        valido, msg_captcha = validar_google_recaptcha(g_recaptcha_response, ip_cliente)
+        if not valido:
+            return JSONResponse(status_code=400, content={"ok": False, "mensagem": msg_captcha})
+
+    # 2. Autenticar credenciais
+    user, msg_auth = autenticar_usuario(username, password)
+    if not user:
+        return JSONResponse(status_code=401, content={"ok": False, "mensagem": msg_auth})
+
+    # 3. Gerar token de sessão assinado
+    token_sessao = gerar_token_sessao(user["id"], user["username"], user["role"])
+
+    response = JSONResponse(content={"ok": True, "user": user})
+    response.set_cookie(
+        key="session_token",
+        value=token_sessao,
+        max_age=7 * 24 * 3600,  # 7 dias
+        httponly=True,
+        samesite="lax",
+        secure=False,  # Permite HTTP local e HTTPS reverso
+    )
+    return response
+
+
+@app.get("/auth/logout")
+async def auth_logout():
+    """Encerra a sessão e redireciona para a tela de login."""
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie("session_token")
+    return response
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Retorna os dados do usuário autenticado."""
+    user = obter_usuario_logado(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"erro": "Não autenticado"})
+    return JSONResponse(content=user)
+
+
+# ── Rota Principal (Copiloto PCP Protegido) ──────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
-async def index():
+async def index(request: Request):
+    """Serve a aplicação principal apenas para usuários autenticados."""
+    user = obter_usuario_logado(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
     html_path = BASE_DIR / "ui" / "index.html"
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
@@ -211,18 +301,139 @@ async def endpoint_analisar(
 
 # ── Endpoint principal da Sprint 4 (Análise por Número) ──────────────────────
 @app.post("/analisar-pedido")
-async def endpoint_analisar_pedido(numero_pedido: str = Form(...)):
+async def endpoint_analisar_pedido(
+    request: Request,
+    numero_pedido: str = Form(...),
+):
     """
     Novo fluxo da Sprint 4: recebe o número do pedido e resolve tudo via API.
+    Protegido por Autenticação do Usuário e Rate Limiting.
     """
+    # 0. Verificação de Autenticação do Usuário
+    user = obter_usuario_logado(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"erros_entrada": [{"campo": "auth", "mensagem": "Sessão expirada ou não autenticada. Faça login novamente."}]})
+
+    # 1. Rate Limiting por IP para proteger a integração do ERP
+    ip_cliente = request.client.host if request.client else "127.0.0.1"
+    permitido, msg_rate = verificar_rate_limit(ip_cliente, limite_por_minuto=30)
+    if not permitido:
+        return JSONResponse(
+            status_code=429,
+            content={"erros_entrada": [{"campo": "seguranca", "mensagem": msg_rate}]}
+        )
+
+    # 2. Sanitização do número do pedido
+    numero_limpo = str(numero_pedido).strip()
+    if not numero_limpo.isdigit():
+        return JSONResponse(
+            status_code=400,
+            content={"erros_entrada": [{"campo": "numero_pedido", "mensagem": "Número do pedido inválido. Digite apenas dígitos numéricos."}]}
+        )
+
     try:
-        resultado = analisar_pedido_por_numero(numero_pedido, CONFIG)
+        resultado = analisar_pedido_por_numero(numero_limpo, CONFIG)
     except Exception as exc:
         hoje = date.today()
         resultado = ResultadoAnalise(timestamp=hoje.isoformat(), data_analise=hoje)
         resultado.avisos_leitura.append(f"Erro inesperado no servidor: {exc}")
 
     return JSONResponse(content=_serializar(resultado))
+
+
+# ── Rotas do Painel Administrativo de Gestão de Usuários ─────────────────────
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Serve a página administrativa de gestão de usuários apenas para administradores."""
+    user = obter_usuario_logado(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/admin", status_code=303)
+    if user.get("role") != "admin":
+        return RedirectResponse(url="/", status_code=303)
+
+    admin_html = BASE_DIR / "ui" / "admin.html"
+    return HTMLResponse(content=admin_html.read_text(encoding="utf-8"))
+
+
+@app.get("/api/admin/users")
+async def api_admin_list_users(request: Request):
+    """Lista todos os usuários cadastrados no banco de dados."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+    return JSONResponse(content={"ok": True, "usuarios": listar_usuarios()})
+
+
+@app.post("/api/admin/users")
+async def api_admin_create_user(
+    request: Request,
+    name: str = Form(...),
+    username: str = Form(...),
+    email: str = Form(default=""),
+    password: str = Form(...),
+    role: str = Form(default="operador"),
+):
+    """Cadastra um novo usuário."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+
+    ok, msg = criar_usuario(username, name, email, password, role)
+    return JSONResponse(content={"ok": ok, "mensagem": msg})
+
+
+@app.put("/api/admin/users/{user_id}")
+async def api_admin_update_user(
+    user_id: int,
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(default=""),
+    role: str = Form(default="operador"),
+):
+    """Atualiza dados cadastrais de um usuário."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+
+    ok, msg = atualizar_usuario(user_id, name, email, role)
+    return JSONResponse(content={"ok": ok, "mensagem": msg})
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+async def api_admin_reset_password(
+    user_id: int,
+    request: Request,
+    password: str = Form(...),
+):
+    """Redefine a senha de um usuário."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+
+    ok, msg = resetar_senha(user_id, password)
+    return JSONResponse(content={"ok": ok, "mensagem": msg})
+
+
+@app.post("/api/admin/users/{user_id}/toggle-status")
+async def api_admin_toggle_status(user_id: int, request: Request):
+    """Ativa ou desativa um usuário."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+
+    ok, msg = alternar_status_usuario(user_id)
+    return JSONResponse(content={"ok": ok, "mensagem": msg})
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def api_admin_delete_user(user_id: int, request: Request):
+    """Exclui permanentemente um usuário."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+
+    ok, msg = excluir_usuario(user_id)
+    return JSONResponse(content={"ok": ok, "mensagem": msg})
 
 
 # ── Endpoint de demonstração com fixtures locais ─────────────────────────────

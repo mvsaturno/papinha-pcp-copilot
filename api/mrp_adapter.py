@@ -71,6 +71,12 @@ class MrpAdapter:
                 cod_insumo = ins_data.get("insumo", "")
                 if not cod_insumo:
                     continue
+
+                # Validar se o insumo é aplicável à grade deste pedido
+                qtde_aplicavel = _calcular_qtde_aplicavel(ins_data, linha)
+                if qtde_aplicavel <= 0:
+                    continue
+
                 materiais_necessarios.add(cod_insumo)
 
                 # Determinar cor do insumo para esta variante de cor do produto
@@ -82,6 +88,7 @@ class MrpAdapter:
         estoque_dict = self._obter_estoque(list(chaves_necessarias))
         materiais_dict = self._obter_dicionario_materiais(list(materiais_necessarios))
         tinturaria_dict = self._obter_ordens_tinturaria(data_inicio_busca)
+        estoque_cru_dict = self._obter_estoque_cru(list(materiais_necessarios))
 
         # ── Passo 3: Montar os BlocoInsumo ───────────────────────────────
         for linha in pedido_linhas:
@@ -95,6 +102,11 @@ class MrpAdapter:
                 if not cod_insumo:
                     continue
 
+                # Validar se o insumo é aplicável à grade deste pedido
+                qtde_aplicavel = _calcular_qtde_aplicavel(ins_data, linha)
+                if qtde_aplicavel <= 0:
+                    continue
+
                 # Resolver cor
                 cod_cor_insumo = _resolver_cor_insumo(ins_data, linha.cor)
                 if cod_cor_insumo is None:
@@ -102,9 +114,9 @@ class MrpAdapter:
 
                 chave = f"{cod_insumo}_{cod_cor_insumo}"
 
-                # Consumo: consumo_unitário × quantidade_total_da_linha
+                # Consumo: consumo_unitário × quantidade_aplicável_da_grade (já com buffer de 5%)
                 consumo_un = float(ins_data.get("consumo", 0.0))
-                consumo_total = consumo_un * linha.qtde_total
+                consumo_total = consumo_un * qtde_aplicavel
 
                 # Setor de consumo: usar o campo real da ficha técnica
                 setor_codigo = str(ins_data.get("setor", ""))
@@ -113,6 +125,7 @@ class MrpAdapter:
                 # Saldo dos estoques/ordens
                 estoque_qtd = estoque_dict.get(chave, 0.0)
                 tinturaria_qtd = tinturaria_dict.get(chave, 0.0)
+                cru_qtd = estoque_cru_dict.get(cod_insumo, 0.0)
                 desc_insumo = materiais_dict.get(cod_insumo, "MATERIAL NÃO ENCONTRADO")
 
                 if chave not in insumos_agrupados:
@@ -129,15 +142,40 @@ class MrpAdapter:
                         pend_tint=tinturaria_qtd,
                         tinturaria=0.0,
                         saldo=0.0,
+                        estoque_cru=cru_qtd,
                     )
                     insumos_agrupados[chave] = bloco
 
                 bloco = insumos_agrupados[chave]
                 bloco.consumo += consumo_total
+                bloco.estoque_cru = cru_qtd
                 bloco.saldo = (
                     bloco.estoque + bloco.compra + bloco.tecelagem
                     + bloco.pend_tint + bloco.tinturaria - bloco.consumo
                 )
+
+                # Avaliar cascata de viabilidade para insumos têxteis
+                falta_tinta = max(0.0, bloco.consumo - (bloco.estoque + bloco.pend_tint))
+                desc_up = desc_insumo.upper()
+                if "MALHA" in desc_up or "RIBANA" in desc_up or "TECIDO" in desc_up or cod_insumo.startswith("03"):
+                    if falta_tinta > 0:
+                        if cru_qtd > 0:
+                            bloco.cascata_info = {
+                                "tem_tinta": False,
+                                "saldo_tinta": bloco.estoque + bloco.pend_tint,
+                                "tem_crua": True,
+                                "saldo_crua": cru_qtd,
+                                "atende_via_tinturaria": cru_qtd >= falta_tinta,
+                                "falta_crua": max(0.0, falta_tinta - cru_qtd),
+                            }
+                        else:
+                            bloco.cascata_info = {
+                                "tem_tinta": False,
+                                "saldo_tinta": bloco.estoque + bloco.pend_tint,
+                                "tem_crua": False,
+                                "saldo_crua": 0.0,
+                                "necessita_tecelagem_fio": True,
+                            }
 
                 # Número de OF vinculado à linha (se disponível via _of_numero)
                 of_num = getattr(linha, "_of_numero", "")
@@ -240,6 +278,37 @@ class MrpAdapter:
         return tinturaria_dict
 
 
+    def _obter_estoque_cru(self, cod_insumos: List[str]) -> Dict[str, float]:
+        """Busca estoque físico de malha crua (sem tingimento/cor 00000 ou cores de base crua)."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        cru_dict: Dict[str, float] = {}
+        # Cores típicas de cru/alvejado/sem tingimento no Excia
+        cores_cruas = {"00000", "0000", "000", "0", "02004", "02005", "00001", "CRU", "BRANCO"}
+
+        def fetch_cru(cod: str):
+            try:
+                resp = self.client.get("Estoque", params={"codigo": cod, "tipo": "M"})
+                if isinstance(resp, list):
+                    total_cru = 0.0
+                    for item in resp:
+                        cor_item = str(item.get("cor", "")).strip().upper()
+                        desc_cor = str(item.get("desc_cor", "")).strip().upper()
+                        if cor_item in cores_cruas or "CRU" in desc_cor or "ALVEJADO" in desc_cor:
+                            total_cru += float(item.get("quantidade", 0.0))
+                    return cod, total_cru
+            except Exception:
+                pass
+            return cod, 0.0
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            for cod, qtd in executor.map(fetch_cru, cod_insumos):
+                if qtd > 0:
+                    cru_dict[cod] = qtd
+
+        return cru_dict
+
+
 # ── Funções auxiliares ────────────────────────────────────────────────────────
 
 def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> Optional[str]:
@@ -265,3 +334,61 @@ def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> Optional[str]:
 
     # Fallback: primeira cor disponível
     return cor_lista[0].get("cor_i", "0")
+
+
+# Conjunto padrão de tamanhos/grades de vestuário conhecidos
+_TAMANHOS_CONHECIDOS = {
+    "RN", "PP", "P", "M", "G", "GG", "XG", "XGG", "EG", "EGG", "XXG",
+    "G1", "G2", "G3", "G4", "U", "UN", "UNICO",
+    "1", "2", "3", "4", "5", "6", "7", "8", "10", "12", "14", "16", "18",
+    "01", "02", "03", "04", "05", "06", "07", "08"
+}
+
+
+def _calcular_qtde_aplicavel(ins_data: dict, linha: LinhaPedido) -> float:
+    """
+    Calcula a quantidade de peças da linha às quais o insumo se aplica.
+    Utiliza as peças a produzir (linha.pecas_produzir) que já contempla o buffer
+    de 5% de quebra da fábrica, conforme solicitado pelo PCP.
+    """
+    faixa = str(ins_data.get("faixa", "")).strip().upper()
+
+    # Quantidade base a produzir (com buffer de 5%)
+    qtd_base = float(getattr(linha, "pecas_produzir", 0.0) or linha.qtde_total)
+
+    # Fator de expansão para aplicar à grade proporcionalmente
+    fator_buffer = 1.0
+    if float(linha.qtde_total) > 0 and qtd_base > 0:
+        fator_buffer = qtd_base / float(linha.qtde_total)
+
+    # 1. Faixas vazias ou explicitamente genéricas -> quantidade total a produzir
+    if not faixa or faixa in ("00", "0", "TODOS", "GERAL", "PADRAO", "LIVRE"):
+        return qtd_base
+
+    if not linha.grade:
+        return qtd_base
+
+    grade_norm = {str(k).strip().upper(): float(v) * fator_buffer for k, v in linha.grade.items()}
+
+    # 2. Correspondência direta de tamanho (ex: faixa "PP" == grade "PP", ou faixa "2" == grade "2")
+    if faixa in grade_norm:
+        return grade_norm[faixa]
+
+    # 3. Correspondência numérica (ex: faixa "04" == grade "4")
+    if faixa.isdigit():
+        f_int = int(faixa)
+        for k, v in grade_norm.items():
+            if k.isdigit() and int(k) == f_int:
+                return v
+
+    # 4. Se a faixa for um tamanho conhecido de grade (mas não está na grade deste pedido):
+    #    Ex: Pedido só tem "PP" ou "2", e o insumo tem faixa "P", "M", "3", "4"
+    #    -> Insumo não é consumido neste pedido.
+    if faixa in _TAMANHOS_CONHECIDOS or (faixa.isdigit() and int(faixa) <= 50):
+        return 0.0
+
+    # 5. Caso contrário, trata-se de sigla de cliente/grade (ex: "RIA", "REN", "YOU", "CEA")
+    #    -> Aplica-se a toda a produção do pedido.
+    return qtd_base
+
+

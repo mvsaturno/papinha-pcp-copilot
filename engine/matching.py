@@ -166,6 +166,8 @@ def casar_com_mrp(
             cor_divergente=is_cor_divergente,
             # Propagar fase real da ficha técnica (setor_atual preenchido pelo MrpAdapter via API)
             fase_consumo=prod.setor_atual if prod.setor_atual else "",
+            estoque_cru=getattr(bloco, "estoque_cru", 0.0),
+            cascata_info=getattr(bloco, "cascata_info", None),
         )
         insumos.append(insumo)
 

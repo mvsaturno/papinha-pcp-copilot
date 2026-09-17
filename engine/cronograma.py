@@ -11,8 +11,15 @@ from datetime import date, timedelta
 from typing import Optional
 
 from engine.models import Cronograma, FaseCronograma, MatchPedido, LinhaPedido
-from parsers.comum import semana_aass, recuar_dias_uteis_excia, avancar_dias_uteis_excia
+from parsers.comum import (
+    semana_aass,
+    recuar_dias_uteis_excia,
+    avancar_dias_uteis_excia,
+    contar_dias_uteis_excia,
+    quarta_da_semana,
+)
 from api.fluxo_adapter import FluxoAdapter
+from api.setor_adapter import SetorAdapter
 
 
 def montar_cronograma(
@@ -23,18 +30,25 @@ def montar_cronograma(
 ) -> Cronograma:
     """
     Monta o cronograma draft para uma linha de pedido.
-    Detecta a rota pelo nome do artigo e calcula datas de cada fase.
+    Detecta a rota pelo nome do artigo ou via API e calcula datas de cada fase
+    usando os lead times dinâmicos dos setores.
     """
     fases_dias = cfg["fases_dias"]
     rotas_cfg = cfg["rotas"]
     overrides_cfg = cfg.get("overrides_fases_por_rota", {})
     lt_futuro = cfg["lead_times_estoque_futuro_dias"]
 
+    # Dados de OF emitida
+    of_emitida = getattr(linha, "of_emitida", False) or (match and match.of_emitida)
+    dt_emissao_of = getattr(linha, "dt_emissao_of", None) or (match and match.dt_emissao_of)
+    semana_of = getattr(linha, "semana_of_oficial", None) or (match and match.semana_of_oficial)
+
     # 1. Calcular duração da fase PCP (dinâmica — seção 3.5)
     pcp_dias = _calcular_pcp_dias(match, fases_dias, lt_futuro, cfg)
 
     # 2. Obter partes e códigos de fluxo via API ParteProdutoLista
     fluxo_adapter = FluxoAdapter()
+    setor_adapter = SetorAdapter()
     partes_produto = []
     if linha.codigo:
         try:
@@ -54,60 +68,36 @@ def montar_cronograma(
         except Exception:
             pass
 
-    def _obter_dias_fase(nome: str) -> int:
-        n = nome.upper().replace("Ã", "A").replace("Ó", "O").replace("É", "E").replace("Á", "A")
-        if "PCP" in n:
-            return pcp_dias
-        if "ENCAIXE" in n and "AGUARDANDO" not in n:
-            return fases_dias.get("ENCAIXE", 1)
-        if "CORTE" in n and "CD" not in n:
-            return fases_dias.get("CORTE", 4)
-        if "COSTURA" in n and "QUAL" not in n and "PRE" not in n and "ACAB" not in n:
-            return fases_dias.get("COSTURA", 11)
-        if "LAVANDERIA" in n or "LAVACAO" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_LAVANDERIA", 1)
-            return fases_dias.get("LAVANDERIA", 10)
-        if "APLIQUE" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_APLIQUE", 1)
-            return fases_dias.get("APLIQUE", 8)
-        if "ESTAMPARIA NUCA" in n or "ESTAMPA NUCA" in n:
-            return fases_dias.get("ESTAMPARIA_NUCA", 4)
-        if "ESTAMPARIA" in n or "ESTAMPA" in n:
-            if "QUAL" in n or "PRE" in n:
-                return fases_dias.get("QUAL_ESTAMPARIA", 1)
-            return fases_dias.get("ESTAMPARIA", 5)
-        if "ACAB" in n:
-            return fases_dias.get("ACAB_COST", 4)
-        if "PASSADORIA" in n:
-            return fases_dias.get("PASSADORIA", 4)
-        if "REVISAO" in n:
-            return fases_dias.get("REVISAO", 6)
-        if "EMBALAGEM" in n:
-            return fases_dias.get("EMBALAGEM", 4)
-        if "QUAL" in n or "CQ" in n:
-            return 1
-        return fases_dias.get(nome, 1)
-
+    # Identificar nomes das fases da rota
     if fases_dinamicas:
         rota_nome = f"API ({fluxo_inferido})"
-        fases_rota = []
-        for f_nome in fases_dinamicas:
-            d = _obter_dias_fase(f_nome)
-            fases_rota.append((f_nome, d))
+        nomes_fases_rota = fases_dinamicas
     else:
         rota_nome = _detectar_rota(linha.descricao, rotas_cfg)
-        rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
-        overrides = overrides_cfg.get(rota_nome, {})
-        
-        fases_rota = []
-        for nome_fase in rota:
-            if nome_fase == "PCP":
-                d = pcp_dias
-            else:
-                d = overrides.get(nome_fase, fases_dias.get(nome_fase, 1))
-            fases_rota.append((nome_fase, d))
+        nomes_fases_rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
+
+    # Se a rota já possui etapas explícitas de TECELAGEM ou TINTURARIA, PCP é o tempo de liberação da ordem (2 dias)
+    tem_etapas_tecido = any("TECELAGEM" in f.upper() or "TINTURARIA" in f.upper() for f in nomes_fases_rota)
+    if tem_etapas_tecido and not (of_emitida and dt_emissao_of and semana_of):
+        pcp_dias = fases_dias.get("PCP_MIN", 2)
+
+    def _obter_dias_fase(nome: str, pcp_dias_atual: Optional[int] = None) -> int:
+        p_dias = pcp_dias if pcp_dias_atual is None else pcp_dias_atual
+        return setor_adapter.obter_lead_time_fase(nome, p_dias)
+
+    # Se a OF já foi emitida, calcular PCP exato da ordem entre emissão e semana oficial
+    if of_emitida and dt_emissao_of and semana_of:
+        fim_of = quarta_da_semana(semana_of)
+        dias_outras = sum(_obter_dias_fase(fn, 0) for fn in nomes_fases_rota if "PCP" not in fn.upper())
+        dias_uteis_totais = contar_dias_uteis_excia(dt_emissao_of, fim_of)
+        if dias_uteis_totais > dias_outras:
+            pcp_dias = dias_uteis_totais - dias_outras
+
+    # Montar fases_rota com a duração correta de cada fase
+    fases_rota = []
+    for f_nome in nomes_fases_rota:
+        d = _obter_dias_fase(f_nome, pcp_dias)
+        fases_rota.append((f_nome, d))
 
     # 4. Calcular cronograma principal forward
     def _calcular_fases_forward(lista_fases_dias, dt_inicio):
