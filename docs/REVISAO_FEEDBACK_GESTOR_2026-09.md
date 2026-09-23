@@ -3,6 +3,12 @@
 Data da revisão: 17/09/2026
 Pedido de referência do gestor: **107487** (entrega 25/01/2027, semana 2704)
 
+> **Atualização 23/09/2026 — resultado da exploração na VM.** `scripts/explorar_lead_times.py 107487`
+> rodou contra a API real (JSON salvos em `scripts/output_exploratorio/lead_times/`). Resultado:
+> **a API do Excia, hoje, não expõe lead time por setor nem cronograma planejado por setor, por
+> nenhum caminho testado.** Ver A1/A2 abaixo para o detalhe. A ação passa a ser contato com o
+> suporte da Excia (Marcos já topou fazer essa pergunta).
+
 Este documento tem três partes:
 
 - **Parte A** — Revisão do código: o que causa cada ponto do feedback, com evidência (arquivo:linha).
@@ -29,15 +35,26 @@ Este documento tem três partes:
 
 **Causa.** Na versão implantada, a duração de cada fase vem de um dicionário fixo em `api/setor_adapter.py` (`_LEAD_TIMES_PADRAO_SETORES`): `TINTURARIA: 20`, `LAVANDERIA: 10`, `EMBALAGEM: 4`. O método `obter_setores()` chama `SetorLista`, mas **nada usa o resultado**: `obter_lead_time_fase()` só consulta o dicionário fixo. O `config/regras.yaml` (`fases_dias`) também deixou de ser lido para as fases; só `PCP_MIN` ainda é usado. Existem, portanto, três fontes de verdade e nenhuma é o Excia.
 
-**Agravante confirmado na documentação da API.** `GET /SetorLista` devolve apenas `codigo`, `descricao`, `tipo`; `GET /Fluxo/:codigo` devolve `setores[]` com `setor`, `descricao`, `ordem`. **Não há campo de dias/prazo por setor em nenhum endpoint documentado.** O "18 dias cadastrado no sistema" que o gestor vê numa tela do Excia não é exposto pela API (pelo menos não pela documentação que temos). **[VALIDAR NA VM]**: chamar `SetorLista` e `Fluxo/{fluxo do 107487}` e confirmar que não vem nenhum campo extra não documentado.
+**Agravante confirmado na documentação da API.** `GET /SetorLista` devolve apenas `codigo`, `descricao`, `tipo`; `GET /Fluxo/:codigo` devolve `setores[]` com `setor`, `descricao`, `ordem`. **Não há campo de dias/prazo por setor em nenhum endpoint documentado.** O "18 dias cadastrado no sistema" que o gestor vê numa tela do Excia não é exposto pela API (pelo menos não pela documentação que temos).
 
-**Decisão (17/09, Marcos):** os lead times têm que vir do Excia via API, porque o PCP os cadastra lá. A documentação que temos não mostra o campo, então o passo 1 da Sprint 5 começa por uma exploração na VM com `scripts/explorar_lead_times.py`, que procura campos não documentados em `Setor/:codigo`, `Fluxo/:codigo`, `ParteProdutoLista` e `OPLista`, e testa `Pedido/Fluxo?numero=107487` (datas planejadas por setor). Se nenhum endpoint expuser os dias, há duas saídas, em ordem: (a) perguntar ao suporte da Excia qual endpoint devolve o prazo por setor do fluxo (o mesmo canal do e-mail da Sprint 3); (b) derivar os lead times do cronograma oficial da OF que o Excia calcula, quando `Pedido/Fluxo` ou `BuscarMovimentacaoOP` trouxerem as datas por setor. O arquivo `config/lead_times.yaml` vira cache/fallback com data de sincronização, não a fonte primária, e a tela de admin mostra "sincronizado do Excia em dd/mm" com botão de ressincronizar.
+**[CONFIRMADO NA VM, 23/09/2026]** `scripts/explorar_lead_times.py 107487` rodou contra a API real. Resultado, com dados reais do pedido 107487 / OF 270363 (JSON em `scripts/output_exploratorio/lead_times/`):
+
+- `GET /SetorLista` devolveu **165 setores** com os campos `codigo`, `descricao`, `tipo`, **`custo`** e **`setup`** (dois campos além dos 3 documentados). Mas `custo` é `0.0` e `setup` é `null` nos 165 registros, sem exceção — não é onde o prazo está cadastrado. `GET /Setor/:codigo` deu 401 (token sem permissão para esse endpoint), mas como a lista já devolve os únicos campos existentes, não há necessidade de liberar esse endpoint.
+- `GET /Fluxo/L13` (fluxo real do artigo do pedido, 28 setores, de PCP a EMBALAGEM) devolveu **só** `setor`, `descricao`, `ordem` — nenhum campo de duração em nenhum dos 28.
+- `GET /Pedido/Fluxo?numero=107487` devolveu **`[]` (vazio)**. Não é erro de permissão, o endpoint respondeu 200 — simplesmente não tem dados de cronograma planejado por setor para este pedido.
+- `GET /BuscarMovimentacaoOP?numero=270363&setor=00|65|66` devolveu registros, mas cada item só tem `cor`, `tam`, `barracli`, `barra`, `qt_orig`, `quant`, `quant_2`, `quant_i`, `codcli`, `custo` — **nenhum campo de data**. Não dá para derivar lead time real a partir daqui, mesmo com OFs concluídas.
+
+**Conclusão: os dois caminhos (a) e (b) da decisão abaixo estão fechados por evidência real, não só por documentação.** A única via que resta é perguntar ao suporte da Excia qual endpoint (se existir algum, mesmo não documentado publicamente) devolve o prazo por setor do fluxo produtivo e o cronograma planejado da OF.
+
+**Decisão (17/09, Marcos; atualizada 23/09):** os lead times têm que vir do Excia via API, porque o PCP os cadastra lá. Como a exploração na VM fechou os dois caminhos automáticos, a ação agora é **Marcos perguntar ao suporte técnico da Excia** (mesmo canal de e-mail da Sprint 3): "qual endpoint devolve o prazo em dias cadastrado por setor no fluxo produtivo, e existe algum que traga o cronograma planejado (datas por setor) de uma OF?". Enquanto não houver resposta, `config/lead_times.yaml` é a fonte (não mais "cache" — é o dado real, digitado manualmente a partir do que o gestor informar), com tela de admin para editar e campo "fonte: manual, atualizado por X em dd/mm". Se a Excia liberar um endpoint no futuro, o adapter passa a lê-lo e o yaml volta a ser fallback.
 
 ### A2. Feriados e férias coletivas ignorados
 
 **Causa.** `parsers/comum.py:140` tem `FERIADOS_NACIONAIS` fixo (feriados nacionais 2025–2027, incluindo carnaval). Não há férias coletivas, pontes nem feriados municipais. `eh_dia_util()` (`comum.py:161`) só olha esse conjunto.
 
-**Confirmado na documentação da API:** zero ocorrências de "feriado", "calendário" ou "férias" em `Docs_Excia.txt`. Como o PCP também cadastra isso no Excia, a mesma exploração do item A1 procura o calendário (o script registra qualquer chave com "feriad", "calend", "parada" ou "ferias" nas respostas) e, se o cronograma oficial da OF vier por `Pedido/Fluxo`, as paradas ficam visíveis como buracos entre `dt_prev` de um setor e `dt_inicio` do seguinte. Se nada vier, o calendário fica em `config/calendario.yaml` com tela de admin, e a pergunta vai para o suporte da Excia junto com a dos lead times.
+**Confirmado na documentação da API:** zero ocorrências de "feriado", "calendário" ou "férias" em `Docs_Excia.txt`.
+
+**[CONFIRMADO NA VM, 23/09/2026]** Mesma exploração do item A1: nenhum dos 165 setores, do fluxo L13 ou das respostas de `Pedido/Fluxo` (vazio) e `BuscarMovimentacaoOP` (sem datas) trouxe qualquer campo de calendário. **`config/calendario.yaml` também passa a ser a fonte real** (cadastro manual a partir do que o gestor informar), não um cache — a pergunta ao suporte da Excia sobre onde ficam feriados/férias coletivas vai no mesmo e-mail da A1.
 
 **Impacto no 107487.** A simulação da engine coloca COSTURA de 16/12/2026 a 04/01/2027, atravessando o fim de ano como se fossem dias úteis normais. Com férias coletivas (ex.: 21/12 a 04/01) todo o início do cronograma recua duas semanas. É exatamente "divergiu demais as datas de início da OF".
 
@@ -129,45 +146,56 @@ PASSO 0 — Sincronizar repositório
    .env e data/users.db continuam no .gitignore. Push.
 2. Corrigir a fixture/expectativa de tests/test_capacidade_parser.py. Suíte 100% verde.
 
-PASSO 1 — Lead times por setor: Excia como fonte, yaml como cache
+PASSO 1 — Lead times por setor: cadastro manual (config/lead_times.yaml), fonte real por ora
 Contexto: api/setor_adapter.py usa um dicionário fixo (TINTURARIA 20, LAVANDERIA 10, EMBALAGEM 4) e ignora
-o retorno de SetorLista; regras.yaml:fases_dias não é mais lido. O PCP cadastra os dias por setor NO EXCIA,
-mas a documentação da API que temos não mostra esse campo (SetorLista/Setor/:codigo devolvem só
-codigo/descricao/tipo; Fluxo/:codigo devolve setores sem prazo).
-1. NA VM: `python scripts/explorar_lead_times.py 107487`. Ler o resumo e os JSON em
-   scripts/output_exploratorio/lead_times/. Procurar: (a) campos numéricos não documentados por setor em
-   Setor/:codigo, Fluxo/:codigo, ParteProdutoLista, OPLista; (b) datas por setor em Pedido/Fluxo e
-   BuscarMovimentacaoOP para a OF 270363. Registrar o resultado em NOTES.md.
-2. Se (a) existir: criar api/lead_time_adapter.py que lê esse campo e devolve {SETOR_NORMALIZADO: dias},
-   com cache de 24 h e ressincronização manual.
-   Se só (b) existir: o mesmo adapter deriva os dias por setor contando dias úteis entre dt_inicio e
-   dt_prev de cada setor no cronograma oficial da OF (usar a OF mais recente por fluxo; mediana quando
-   houver várias) e registra "derivado da OF nnnnnn em dd/mm".
-   Se nem (a) nem (b): PARAR e perguntar ao usuário; ele leva a pergunta ao suporte da Excia
-   ("qual endpoint devolve o prazo em dias cadastrado por setor no fluxo produtivo?"). Enquanto isso,
-   seguir com o yaml semeado pelos valores que o gestor informar.
-3. Criar config/lead_times.yaml como CACHE/FALLBACK, nunca como fonte primária:
+o retorno de SetorLista; regras.yaml:fases_dias não é mais lido. JÁ FOI CONFIRMADO NA VM (23/09/2026,
+scripts/output_exploratorio/lead_times/) que a API do Excia hoje NÃO expõe: (a) nenhum campo de dias/prazo
+em SetorLista (165 setores, campos extras custo=0.0/setup=null em todos), Setor/:codigo (401, mas
+irrelevante — SetorLista já mostra os únicos campos existentes) ou Fluxo/:codigo (28 setores do fluxo real
+L13, só setor/descricao/ordem); (b) nenhuma data em Pedido/Fluxo?numero=107487 (respondeu [] vazio) nem em
+BuscarMovimentacaoOP (campos são só quantidade/cor/tamanho, sem nenhuma data). NÃO REPETIR essa exploração —
+está fechada. A ação pendente é Marcos perguntar ao suporte da Excia (fora do escopo deste agente); até a
+resposta, o yaml abaixo é a fonte real, cadastrada manualmente a partir do que o gestor informar.
+1. Perguntar ao usuário a tabela completa de dias úteis por setor do fluxo real L13 (os 28 setores listados
+   em scripts/output_exploratorio/lead_times/Fluxo_L13.json: PCP, TECELAGEM, TINTURARIA, DESENVOLVIMENTO,
+   AGUARDANDO ENCAIXE, ENCAIXE, CD CORTE, CORTE, PRE COSTURA, COSTURA, QUAL. COSTURA, PRE LAVANDERIA,
+   LAVANDERIA, QUAL. LAVANDERIA, PRE ESTAMPARIA NUCA, ESTAMPARIA NUCA, QUAL. ESTAMPARIA NUCA, PRE APLIQUE,
+   APLIQUE, QUAL. APLIQUE, CQ, PRE ACABAMENTOS COSTURA, ACAB. COST., QUAL. ACABAMENTOS COSTURA,
+   PRE PASSADORIA/REVISÃO/EMBALAG, REVISÃO, PASSADORIA, EMBALAGEM) e de qualquer outro setor usado por
+   outras rotas (VESTIDO, REGATA, PIJAMA, CONJUNTO, CAMISETA — ver rotas: em regras.yaml).
+2. Criar config/lead_times.yaml:
      versao: 1
-     sincronizado_em: "2026-09-17T10:00:00"
-     fonte: "excia:Fluxo" | "excia:Pedido/Fluxo (derivado)" | "manual"
+     atualizado_em: "2026-09-23"
+     fonte: "manual — cadastro do Excia informado pelo PCP (API não expõe; aguardando resposta do suporte)"
      setores: {PCP: 2, TECELAGEM: 5, TINTURARIA: 18, LAVANDERIA: 9, EMBALAGEM: 3, ...}
      aliases: {"ESTAMPA NUCA": ESTAMPARIA_NUCA, "QUAL. ESTAMPARIA": QUAL_ESTAMPARIA, "QUAL.": QUAL, ...}
-4. Refatorar api/setor_adapter.py: remover _LEAD_TIMES_PADRAO_SETORES; resolver o nome da fase por alias +
-   normalização (sem a cadeia de ifs por substring); ordem de resolução: adapter do Excia → yaml → aviso
-   em log e 1 dia. Remover fases_dias de regras.yaml (manter só PCP_MIN/PCP_PADRAO, movidos para
-   lead_times.yaml) e limpar cfg["fases_dias"] em engine/cronograma.py.
-5. Tela de admin: aba "Lead times por setor" mostrando fonte e data de sincronização, botão
-   "Ressincronizar do Excia", e edição manual permitida apenas com justificativa (grava usuario+data+motivo).
-   Endpoints GET/POST /api/admin/lead-times e POST /api/admin/lead-times/sincronizar.
-6. No card do cronograma: rodapé "Lead times: Excia, sincronizado em dd/mm/aaaa" (ou "manual, por X em dd/mm").
-7. Testes: montar_cronograma com lead_times injetados; adapter com fixture JSON real salva no passo 1.
+   Os aliases traduzem a descrição EXATA de Fluxo/:codigo (ex.: "ACAB. COST.", "QUAL. ACABAMENTOS COSTURA")
+   para a chave normalizada em `setores:` — usar os nomes reais capturados no passo 1, não os que estavam
+   no dicionário fixo antigo (que já divergiam: "ESTAMPARIA_NUCA" vs "ESTAMPARIA NUCA" real).
+3. Refatorar api/setor_adapter.py: remover _LEAD_TIMES_PADRAO_SETORES; SetorAdapter carrega o yaml, resolve
+   o nome da fase por alias + normalização (sem a cadeia de ifs por substring), com fallback documentado
+   (log de aviso + 1 dia) só quando a fase não estiver no yaml. Manter `obter_setores()` chamando
+   SetorLista apenas para exibir nomes/validar setores existentes, não para ler prazo (não existe).
+4. Remover fases_dias de config/regras.yaml (manter só PCP_MIN/PCP_PADRAO, movidos para lead_times.yaml
+   junto dos demais) e limpar cfg["fases_dias"] em engine/cronograma.py.
+5. Tela de admin: aba "Lead times por setor" com tabela editável (setor, dias úteis) e um aviso fixo
+   "Cadastro manual — a API do Excia não expõe estes valores hoje (ver e-mail ao suporte de dd/mm)".
+   Endpoints GET/PUT /api/admin/lead-times, grava usuário + data + motivo da alteração. Invalidar o cache
+   do SetorAdapter ao salvar.
+6. No card do cronograma: rodapé "Lead times: cadastro interno de dd/mm/aaaa" com tooltip listando a fonte.
+7. Testes: montar_cronograma com lead_times injetados (TINTURARIA 18 etc.); teste de alias garantindo que
+   "ACAB. COST." (nome real do Fluxo/L13) resolve para a chave certa do yaml.
+8. [Fora deste passo, ação do Marcos] Enviar e-mail ao suporte da Excia perguntando: "qual endpoint devolve
+   o prazo em dias cadastrado por setor no fluxo produtivo, e existe algum que traga o cronograma
+   planejado (datas por setor) de uma OF?". Se um endpoint surgir, criar api/lead_time_adapter.py que o lê
+   e o yaml manual volta a ser fallback — não fazer essa troca até a resposta chegar.
 
 PASSO 2 — Calendário: feriados, férias coletivas e paradas
 Contexto: parsers/comum.py tem FERIADOS_NACIONAIS fixo; não há endpoint de calendário na API do Excia.
-0. Antes de criar o yaml, checar nos JSON do passo 1 se apareceu alguma chave de calendário
-   (o script já grava tudo) e se o cronograma da OF em Pedido/Fluxo tem buracos entre setores que
-   coincidam com feriados/férias. Se o Excia expuser o calendário, o adapter do passo 1 também o lê e o
-   yaml abaixo vira cache, com a mesma tela de ressincronização.
+0. JÁ CONFIRMADO (passo 1 do PASSO 1 acima, mesma exploração): nenhuma chave de calendário apareceu em
+   SetorLista, Fluxo/L13, Pedido/Fluxo (vazio) ou BuscarMovimentacaoOP (sem datas). config/calendario.yaml
+   é cadastro manual, não cache. A pergunta sobre calendário vai no mesmo e-mail ao suporte da Excia
+   (ver PASSO 1, item 8).
 1. Criar config/calendario.yaml:
      feriados:                # datas únicas (nacionais + municipais)
        - {data: "2026-11-02", descricao: "Finados"}
@@ -418,15 +446,19 @@ ENTREGA MÍNIMA (MVP) = Fases 1, 2, 3 e 4.1–4.2. Fases 4.3–4.4 e 5 fecham a 
 
 ---
 
-## Pendências (atualizado 17/09 após respostas do Marcos)
+## Pendências (atualizado 23/09 após exploração real na VM)
 
 Resolvidas: regra de nova entrega (+1, máximo +2 sem autorização); token da API já rotacionado; cronograma
-da aplicação para o 107487 já em mãos (PDF de 17/09, OF 270363).
+da aplicação para o 107487 já em mãos (PDF de 17/09, OF 270363); exploração de lead times/calendário via
+API rodada e conclusiva — **caminho B confirmado** (API não expõe; ver A1/A2 e PASSO 1).
 
-1. **Rodar `scripts/explorar_lead_times.py 107487` na VM** e me enviar a pasta
-   `scripts/output_exploratorio/lead_times/`. Isso decide se lead times e calendário vêm da API (caminho A)
-   ou se a pergunta vai para o suporte da Excia (caminho B).
-2. **Ao gestor, enquanto isso:** a tabela completa de dias por setor e as datas das férias coletivas/pontes,
-   para semear o cache mesmo no caminho A (serve de conferência).
-3. **Se o caminho B se confirmar:** e-mail ao suporte da Excia perguntando qual endpoint devolve (a) o prazo
-   em dias cadastrado por setor no fluxo produtivo e (b) o calendário de feriados/paradas.
+1. **Marcos → suporte da Excia:** e-mail perguntando (a) qual endpoint devolve o prazo em dias cadastrado
+   por setor no fluxo produtivo e (b) qual endpoint traz o calendário de feriados/paradas/férias coletivas.
+   Anexar como evidência o que já testamos: `SetorLista` (165 setores, sem campo de prazo),
+   `Fluxo/L13` (28 setores, sem duração), `Pedido/Fluxo?numero=107487` (vazio) e `BuscarMovimentacaoOP`
+   (sem datas). Não esperar essa resposta para começar a Sprint 5 — o cadastro manual já destrava tudo.
+2. **Ao gestor, para começar a Sprint 5 já:** a tabela completa de dias úteis para os 28 setores do fluxo
+   L13 (listados no PASSO 1 do prompt) e de quaisquer outros setores usados pelas rotas VESTIDO/REGATA/
+   PIJAMA/CONJUNTO/CAMISETA; e as datas das férias coletivas 2026/27 e demais paradas/pontes cadastradas.
+3. **Cronograma impresso da OF 270363 no Excia** — ainda necessário para o PASSO 3 (convenção de contagem
+   de dias), já que `Pedido/Fluxo` veio vazio e não serve como substituto.
