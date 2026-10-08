@@ -308,6 +308,54 @@ PASSO 7 — Validação de ponta a ponta na VM
 
 ## Parte C — PROMPT 2: camada conversacional (Sprint 6) e resposta sobre esforço
 
+> **Atualização 08/10/2026.** A Papinha Baby provocou a mesma ideia pelo próprio lado: "um agente
+> tipo ChatGPT com acesso à API do Excia". Pergunta deles: isso é um MCP, ou uma IA embarcada com
+> regras do que falar? Resposta em C0 abaixo, antes do resto da Parte C (que já cobria o mesmo plano).
+
+### C0. MCP ou "IA embarcada"? Nenhum dos dois — tool use direto na API da Anthropic
+
+**MCP (Model Context Protocol) é a ferramenta errada aqui, e dá pra explicar sem jargão.** MCP serve para
+quando *outro* programa de IA (Claude Desktop, Cursor, um agente de terceiros) precisa descobrir e usar
+as ferramentas do seu sistema por conta própria, sem combinar nada com você antes. É um protocolo de
+integração entre ferramentas de IA diferentes. Aqui o cenário é o oposto: é **a própria Papinha Baby**
+quem vai construir o chat, de ponta a ponta — tela, backend, prompt, regras. Não existe um segundo agente
+de IA de fora que precise "descobrir" a API do Excia sozinho. Construir um servidor MCP para isso seria
+uma camada de protocolo a mais, sem ninguém do outro lado para falar com ela — complexidade sem benefício.
+
+**"IA embarcada com parâmetros já definidos" é a descrição certa, só que o nome técnico é *tool use*
+(function calling).** É o mesmo padrão por trás do Claude.ai, do Cursor, do Copilot: o modelo de linguagem
+não tem acesso direto a nada — ele recebe uma lista de "ferramentas" (funções Python com nome, descrição
+e parâmetros), escolhe qual chamar e com quais argumentos, o **seu código roda a função de verdade**, e o
+resultado volta pro modelo continuar a conversa. "O que falar e o que não falar" vira duas coisas
+concretas: (1) o *system prompt*, um texto que define o papel do agente, o vocabulário do PCP e o que ele
+nunca deve fazer (calcular datas de cabeça, por exemplo); (2) as *ferramentas* — o agente só enxerga o que
+existe como função. Se não existe `gravar_of()`, ele fisicamente não consegue gravar nada no Excia, não
+importa o que o usuário peça. É mais garantia por código do que por instrução de texto.
+
+**Boa notícia: o projeto já está desenhado assim.** `api/*_adapter.py` (Pedido, MRP, Capacidade, Fluxo,
+Setor) e a engine (`engine/*.py`) já são exatamente as funções Python que virariam ferramentas — é reuso,
+não reescrita. O que falta é a Fase 2 do PROMPT 2 abaixo: envolver cada adapter numa função pequena, com
+docstring em português (vira a descrição que o modelo lê) e devolver só o que cabe numa resposta de chat.
+
+**Nível de acesso que temos hoje, e o que isso significa pro agente:** o token do Excia é só leitura nos
+endpoints que já usamos (Pedido, MRP, Estoque, Fluxo, OFs, Capacidade) — ótimo, porque o agente **nunca**
+deve ter ferramenta de escrita; isso fica garantido por desenho, não por prompt. A exploração de 23/09
+(seção A1/A2) mostrou que lead time e calendário não vêm da API — então as ferramentas do agente leem
+`config/lead_times.yaml` e `config/calendario.yaml` (Sprint 5) para essas duas perguntas, e a API para
+tudo o mais (estoque, prazo de entrega, capacidade, se a OF já foi emitida). O agente não "resolve" essa
+limitação — ele é honesto sobre ela: se perguntarem um lead time que não está no yaml, a ferramenta
+responde "não cadastrado" e o agente repassa isso, em vez de inventar um número.
+
+**Modelo e custo, com os preços de hoje (08/10/2026):** `claude-opus-5-5` (US\$ 4/US\$ 20 por milhão de
+tokens de entrada/saída) é o modelo padrão recomendado para este tipo de agente — letra de raciocínio alta
+o bastante para não inventar números, e o próprio preço caiu em relação ao que eu tinha calculado em
+setembro. Para um uso tão estruturado quanto este (perguntas sobre pedidos, poucos passos de ferramenta
+por conversa), `claude-sonnet-5-5` (US\$ 2/US\$ 10, metade do preço, mesma janela de contexto) também
+resolve bem — vale rodar os dois lado a lado nos primeiros testes (Fase 5 do PROMPT 2) e decidir pela
+qualidade real das respostas, não só pelo preço. Com *prompt caching* ligado no system prompt e na lista
+de ferramentas (que não mudam entre perguntas — ver C2), uma conversa de 10 perguntas sobre um pedido fica
+em poucos centavos de dólar, em qualquer um dos dois modelos.
+
 ### C1. Resposta direta à pergunta do gestor ("é possível? é muito trabalhoso?")
 
 **É possível, e a parte difícil já está feita.** O que ele descreve ("recalcule com lavanderia em 6 dias em vez de 9") é uma camada de conversa em cima de um motor que já existe e é determinístico: a engine calcula cronograma, capacidade e insumos a partir de parâmetros. O que falta é (1) deixar esses parâmetros injetáveis por chamada, (2) expor a engine e os adapters do Excia como "ferramentas" para um modelo de linguagem, e (3) uma interface de chat.
@@ -322,7 +370,7 @@ Ordem de grandeza de esforço (uma pessoa, após a Sprint 5 concluída):
 | Chat MVP | 1 pedido por conversa, 6 ferramentas, simulação com overrides de lead time/calendário/quebra, streaming, histórico da sessão | 2 a 3 semanas |
 | Versão comercializável | multiempresa/multiusuário, histórico persistido, permissões, avaliação automática de qualidade (evals), observabilidade de custo, onboarding de outro ERP | mais 4 a 6 semanas |
 
-Custo de uso (estimativa, modelo Claude Opus 5 a US$ 5/1M tokens de entrada e US$ 25/1M de saída, com cache do prompt de sistema e das ferramentas): uma conversa típica de 10 perguntas sobre um pedido fica na casa de **US$ 0,10 a 0,40**. Com Claude Sonnet 5 (US$ 2/10) cai para menos da metade. É irrelevante frente ao valor de uma OF cancelada.
+Custo de uso (preços de 08/10/2026 — ver C0 para a atualização; já caiu desde a estimativa original de setembro): com Claude Opus 5.5 (US$ 4/1M entrada, US$ 20/1M saída) e cache do prompt de sistema e das ferramentas, uma conversa típica de 10 perguntas sobre um pedido fica na casa de **US$ 0,08 a 0,30**. Com Claude Sonnet 5.5 (US$ 2/10, mesma janela) cai para menos da metade. É irrelevante frente ao valor de uma OF cancelada.
 
 ### C2. Arquitetura proposta (resumo)
 
@@ -405,7 +453,8 @@ Cada ferramenta devolve dicts pequenos (< 4 k tokens); listas longas são resumi
 e um parâmetro `detalhar=True` para ver tudo.
 
 FASE 3 — Agente
-1. pip install anthropic (SDK oficial). Modelo: claude-opus-5 (padrão). Chave em ANTHROPIC_API_KEY no
+1. pip install anthropic (SDK oficial). Modelo: claude-opus-5-5 (padrão recomendado; claude-sonnet-5-5 é
+   uma alternativa válida e mais barata — comparar os dois na Fase 5 antes de fixar). Chave em ANTHROPIC_API_KEY no
    .env (nunca no código).
 2. chat/agente.py usando client.beta.messages.tool_runner com as ferramentas da Fase 2 decoradas com
    @beta_tool. thinking={"type": "adaptive"}; output_config={"effort": "medium"} (subir para "high" se as
