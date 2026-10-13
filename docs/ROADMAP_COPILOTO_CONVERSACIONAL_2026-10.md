@@ -528,7 +528,7 @@ autorização"), A6 (sem data inventada p/ malha em falta), A7 (agrupamento de i
 (falso positivo de cor + tabela explícita de aliases de setor, sem substring) — todos aprovados.
 Dois achados cosméticos, não bloqueantes, incluídos como limpeza no PASSO 0 do prompt abaixo.
 
-Com isso, **PASSO 1 a 5 do PROMPT consolidado (seção 8) estão concluídos.** Only o PASSO 6 (camada
+Com isso, **PASSO 1 a 5 do PROMPT consolidado (seção 8) estão concluídos.** Só o PASSO 6 (camada
 conversacional) e o PASSO 7 (validação ponta a ponta) restam — esse é o Bloco 3.
 
 ### PROMPT — colar no Antigravity
