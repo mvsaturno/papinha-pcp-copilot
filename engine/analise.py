@@ -164,6 +164,16 @@ def _analisar_linha(
     if of_emitida and numero_of:
         motivos.insert(0, f"🏷️ Ordem de Produção OF {numero_of} emitida no Excia (Semana Oficial: {semana_of or semana_alvo}).")
 
+    # Aviso explícito se lead times foram resolvidos por sugestão automática
+    tem_lt_sugerido = bool(cronograma and getattr(cronograma, "lead_time_sugerido_nao_confirmado", False))
+    if tem_lt_sugerido:
+        qtd_sug = len(cronograma.etapas_sugeridas)
+        origens = sorted(list(set(s.origem for s in cronograma.etapas_sugeridas.values())))
+        origens_str = ", ".join(origens) if origens else "cadastro"
+        motivos.append(
+            f"ℹ️ Lead time de {qtd_sug} etapa(s) ainda não confirmado pelo analista — usando sugestão: {origens_str}"
+        )
+
     # 7. Flag horizonte longo
     horizonte_longo = (pedido.entrega - hoje).days > horizonte_dias
 
@@ -171,6 +181,8 @@ def _analisar_linha(
     flags = list(match.avisos)
     for ins in insumos_avaliados:
         flags.extend(ins.avisos)
+    if tem_lt_sugerido:
+        flags.append("LEAD_TIME_SUGERIDO_NAO_CONFIRMADO")
     if horizonte_longo:
         pend_alvo = cap.periodos.get(semana_alvo, 0)
         limite = cfg["capacidade"]["limite_total_semana"]
@@ -197,10 +209,11 @@ def _analisar_linha(
         "semana_alvo_aass": semana_alvo,
         "match_of": match.of,
         "match_confianca": match.confianca,
-        "rota": cronograma.rota_detectada,
-        "pcp_dias": cronograma.pcp_dias,
-        "folga_dias": cronograma.folga_dias,
-        "inicio_mais_tarde": formatar_data_br(cronograma.inicio_mais_tarde) if cronograma.inicio_mais_tarde else None,
+        "rota": cronograma.rota_detectada if cronograma else None,
+        "pcp_dias": cronograma.pcp_dias if cronograma else None,
+        "folga_dias": cronograma.folga_dias if cronograma else None,
+        "inicio_mais_tarde": formatar_data_br(cronograma.inicio_mais_tarde) if (cronograma and cronograma.inicio_mais_tarde) else None,
+        "lead_time_sugerido_nao_confirmado": tem_lt_sugerido,
         "avisos_pedido": pedido.avisos_parsing,
     }
 
@@ -232,6 +245,7 @@ def _analisar_linha(
         avisos_flags=flags,
         dados_brutos=dados_brutos,
         pendencia_lead_time=pendencia_lead_time,
+        lead_time_sugerido_nao_confirmado=tem_lt_sugerido,
     )
 
 

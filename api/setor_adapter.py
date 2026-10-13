@@ -95,13 +95,9 @@ def gerar_sugestao(
         faixa = sugeridos[setor_norm]
         return SugestaoLeadTime(dias_min=faixa[0], dias_max=faixa[1], origem="generico")
 
-    # Tenta matching flexível com chaves do yaml
-    for k, faixa in sugeridos.items():
-        if k in setor_norm or setor_norm in k:
-            return SugestaoLeadTime(dias_min=faixa[0], dias_max=faixa[1], origem="generico")
-
-    # 3. Sem sugestão
+    # 3. Sem sugestão (correspondência estritamente exata, sem substring)
     return SugestaoLeadTime(dias_min=0, dias_max=0, origem="sem_sugestao")
+
 
 
 class SetorAdapter:

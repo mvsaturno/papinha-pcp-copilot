@@ -177,6 +177,8 @@ class Cronograma:
     # Múltiplas partes (Superior, Inferior, Acessórios, Estampa)
     cronogramas_partes: dict[str, list[FaseCronograma]] = field(default_factory=dict)
     partes_info: list[dict] = field(default_factory=list)
+    lead_time_sugerido_nao_confirmado: bool = False
+    etapas_sugeridas: dict[str, SugestaoLeadTime] = field(default_factory=dict)
 
 
 # ──────────────────────────────────────────────
@@ -235,6 +237,8 @@ class CardPedido:
     partes_info: list[dict] = field(default_factory=list)
     pendencia_lead_time: Optional[PendenciaLeadTime] = None
     janela_producao: Optional[JanelaProducao] = None
+    lead_time_sugerido_nao_confirmado: bool = False
+
 
 
 
