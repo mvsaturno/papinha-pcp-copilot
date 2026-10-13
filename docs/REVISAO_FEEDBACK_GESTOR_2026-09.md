@@ -39,7 +39,8 @@ Este documento tem três partes:
 
 **[CONFIRMADO NA VM, 23/09/2026]** `scripts/explorar_lead_times.py 107487` rodou contra a API real. Resultado, com dados reais do pedido 107487 / OF 270363 (JSON em `scripts/output_exploratorio/lead_times/`):
 
-- `GET /SetorLista` devolveu **165 setores** com os campos `codigo`, `descricao`, `tipo`, **`custo`** e **`setup`** (dois campos além dos 3 documentados). Mas `custo` é `0.0` e `setup` é `null` nos 165 registros, sem exceção — não é onde o prazo está cadastrado. `GET /Setor/:codigo` deu 401 (token sem permissão para esse endpoint), mas como a lista já devolve os únicos campos existentes, não há necessidade de liberar esse endpoint.
+- `GET /SetorLista` devolveu **165 setores** com os campos `codigo`, `descricao`, `tipo`, **`custo`** e **`setup`** (dois campos além dos 3 documentados). Mas `custo` é `0.0` e `setup` é `null` nos 165 registros, sem exceção — não é onde o prazo está cadastrado. `GET /Setor/:codigo` deu 401 na primeira tentativa (token sem permissão para esse endpoint).
+- **[13/10/2026] O Leomar (TI da Papinha Baby) liberou `GET /Setor/:codigo` para o nosso token.** Reexploramos com a varredura completa: os **165 setores**, um por um, via `Setor/{codigo}`. Resultado idêntico ao de `SetorLista` — os mesmos 5 campos (`codigo`, `descricao`, `tipo`, `custo`, `setup`), `custo` sempre `0.0` e `setup` sempre `null`, sem uma única exceção nos 165. **Confirmado: `Setor/:codigo` não tem prazo nenhum, nem agora com acesso liberado.** Essa era a última hipótese de endpoint não explorado — com ela fechada, não sobra nenhum lugar conhecido na API onde o prazo por setor possa estar.
 - `GET /Fluxo/L13` (fluxo real do artigo do pedido, 28 setores, de PCP a EMBALAGEM) devolveu **só** `setor`, `descricao`, `ordem` — nenhum campo de duração em nenhum dos 28.
 - `GET /Pedido/Fluxo?numero=107487` devolveu **`[]` (vazio)**. Não é erro de permissão, o endpoint respondeu 200 — simplesmente não tem dados de cronograma planejado por setor para este pedido.
 - `GET /BuscarMovimentacaoOP?numero=270363&setor=00|65|66` devolveu registros, mas cada item só tem `cor`, `tam`, `barracli`, `barra`, `qt_orig`, `quant`, `quant_2`, `quant_i`, `codcli`, `custo` — **nenhum campo de data**. Não dá para derivar lead time real a partir daqui, mesmo com OFs concluídas.
@@ -495,19 +496,25 @@ ENTREGA MÍNIMA (MVP) = Fases 1, 2, 3 e 4.1–4.2. Fases 4.3–4.4 e 5 fecham a 
 
 ---
 
-## Pendências (atualizado 23/09 após exploração real na VM)
+## Pendências (atualizado 13/10/2026 — `Setor/:codigo` liberado e testado, resultado negativo)
 
 Resolvidas: regra de nova entrega (+1, máximo +2 sem autorização); token da API já rotacionado; cronograma
 da aplicação para o 107487 já em mãos (PDF de 17/09, OF 270363); exploração de lead times/calendário via
-API rodada e conclusiva — **caminho B confirmado** (API não expõe; ver A1/A2 e PASSO 1).
+API rodada e conclusiva em dois ciclos — **todas as hipóteses de endpoint fechadas**, inclusive
+`Setor/:codigo` depois de liberado (ver A1). **O caminho A (API expõe o dado) está descartado com evidência
+real e completa.** Resta o caminho B: perguntar ao suporte oficial da Excia, e seguir com cadastro manual
+enquanto isso.
 
-1. **Marcos → suporte da Excia:** e-mail perguntando (a) qual endpoint devolve o prazo em dias cadastrado
-   por setor no fluxo produtivo e (b) qual endpoint traz o calendário de feriados/paradas/férias coletivas.
-   Anexar como evidência o que já testamos: `SetorLista` (165 setores, sem campo de prazo),
+1. **Marcos → suporte da Excia (pendente, não bloqueia a Sprint 5):** e-mail perguntando (a) qual endpoint
+   devolve o prazo em dias cadastrado por setor no fluxo produtivo e (b) qual endpoint traz o calendário de
+   feriados/paradas/férias coletivas. Agora dá pra ser ainda mais específico: já testamos `SetorLista` e
+   `Setor/:codigo` (165 setores cada, liberado e varrido por completo em 13/10 — sem campo de prazo),
    `Fluxo/L13` (28 setores, sem duração), `Pedido/Fluxo?numero=107487` (vazio) e `BuscarMovimentacaoOP`
-   (sem datas). Não esperar essa resposta para começar a Sprint 5 — o cadastro manual já destrava tudo.
-2. **Ao gestor, para começar a Sprint 5 já:** a tabela completa de dias úteis para os 28 setores do fluxo
-   L13 (listados no PASSO 1 do prompt) e de quaisquer outros setores usados pelas rotas VESTIDO/REGATA/
-   PIJAMA/CONJUNTO/CAMISETA; e as datas das férias coletivas 2026/27 e demais paradas/pontes cadastradas.
+   (8 setores testados, sem nenhuma data). Deixar claro pro Leomar/suporte que já não é mais "será que
+   temos acesso" — é "esse dado existe em algum endpoint da API, documentado ou não".
+2. **Ao gestor, para começar a Sprint 5 já (bloqueia o PASSO 1):** a tabela completa de dias úteis para os
+   28 setores do fluxo L13 (listados no PASSO 1 do prompt) e de quaisquer outros setores usados pelas
+   rotas VESTIDO/REGATA/PIJAMA/CONJUNTO/CAMISETA; e as datas das férias coletivas 2026/27 e demais
+   paradas/pontes cadastradas.
 3. **Cronograma impresso da OF 270363 no Excia** — ainda necessário para o PASSO 3 (convenção de contagem
-   de dias), já que `Pedido/Fluxo` veio vazio e não serve como substituto.
+   de dias), já que `Pedido/Fluxo` veio vazio nas duas rodadas e não serve como substituto.
