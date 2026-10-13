@@ -273,3 +273,30 @@ class TipoPDF:
         "MRP": "mrp",
         "CAPACIDADE": "capacidade",
     }
+
+
+# ──────────────────────────────────────────────
+# Modelos de Lead Time e Janela de Produção
+# ──────────────────────────────────────────────
+
+@dataclass
+class SugestaoLeadTime:
+    dias_min: int
+    dias_max: int
+    origem: str          # "ultimo_confirmado" | "generico" | "sem_sugestao"
+    confirmado_em: Optional[date] = None   # quando origem == ultimo_confirmado
+
+
+@dataclass
+class PendenciaLeadTime:
+    setores_faltantes: list[str]           # nomes normalizados, na ordem do fluxo real
+    sugestoes: dict[str, SugestaoLeadTime] = field(default_factory=dict)  # chave = mesmo nome; pode estar vazio p/ um setor
+
+
+@dataclass
+class JanelaProducao:
+    cenario_otimista: Cronograma
+    cenario_pessimista: Cronograma
+    semana_w: int   # AASS, fim do cenário otimista
+    semana_z: int   # AASS, fim do cenário pessimista (semana_w == semana_z se não há faixa real)
+

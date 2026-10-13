@@ -13,6 +13,12 @@ from api.user_service import (
 
 
 def test_criar_e_autenticar_usuario():
+    # Garantir limpeza prévia se já existia de execuções anteriores
+    usuarios = listar_usuarios()
+    u_prev = next((x for x in usuarios if x["username"] == "alexandre_pcp"), None)
+    if u_prev:
+        excluir_usuario(u_prev["id"])
+
     # 1. Criar operador
     ok, msg = criar_usuario("alexandre_pcp", "Alexandre PCP", "alexandre@papinhababy.com.br", "senha123", "operador")
     assert ok is True
@@ -28,6 +34,13 @@ def test_criar_e_autenticar_usuario():
     user_inv, err_inv = autenticar_usuario("alexandre_pcp", "senha_errada")
     assert user_inv is None
     assert "incorretos" in err_inv
+
+    # Limpeza posterior
+    usuarios = listar_usuarios()
+    u_final = next((x for x in usuarios if x["username"] == "alexandre_pcp"), None)
+    if u_final:
+        excluir_usuario(u_final["id"])
+
 
 
 def test_sessao_token_lifecycle():
