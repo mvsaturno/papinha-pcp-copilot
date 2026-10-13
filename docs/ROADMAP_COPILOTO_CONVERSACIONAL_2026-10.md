@@ -516,3 +516,182 @@ VALIDAÇÃO OBRIGATÓRIA antes de reportar o Bloco 1 como concluído:
 Só depois dessa validação o Bloco 2 (PASSO 4 — calendário, PASSO 5 — bugs A3-A8) deve começar.
 ```
 
+---
+
+## 10. Bloco 2 aprovado (commit `b873865`, 13/10/2026) — Bloco 3 liberado
+
+Revisão feita puxando o diff real (`git diff 2a0d7cf b873865`) e rodando a suíte completa num checkout
+isolado do commit de verdade (não a branch de trabalho local). **100/100 testes passando no commit
+real.** Calendário, A4 (sugestão explícita — mensagem bate com o PDF do pedido 107487), A5 (aritmética
+de semanas, limite de autorização corrigido de acordo com a decisão do Marcos: "até produção+2 sem
+autorização"), A6 (sem data inventada p/ malha em falta), A7 (agrupamento de insumo duplicado) e A8
+(falso positivo de cor + tabela explícita de aliases de setor, sem substring) — todos aprovados.
+Dois achados cosméticos, não bloqueantes, incluídos como limpeza no PASSO 0 do prompt abaixo.
+
+Com isso, **PASSO 1 a 5 do PROMPT consolidado (seção 8) estão concluídos.** Only o PASSO 6 (camada
+conversacional) e o PASSO 7 (validação ponta a ponta) restam — esse é o Bloco 3.
+
+### PROMPT — colar no Antigravity
+
+```text
+Bloco 3 do projeto "papinha-pcp-copilot": construir a camada conversacional (PASSO 6 do PROMPT
+consolidado em docs/ROADMAP_COPILOTO_CONVERSACIONAL_2026-10.md, seção 8) sobre a engine já
+parametrizada e validada dos Blocos 1 e 2. ANTES de editar qualquer arquivo, leia nesta ordem:
+  1. docs/ROADMAP_COPILOTO_CONVERSACIONAL_2026-10.md inteiro (planos vigentes, seções 3, 3.1, 4, 5 e 8).
+  2. docs/REVISAO_FEEDBACK_GESTOR_2026-09.md, Parte C inteira (C0 a C3) — é a base técnica das Fases
+     1-5 abaixo; este prompt só lista o que MUDA em relação a ela, não repete o que já está lá.
+
+ESTADO ATUAL DO CÓDIGO (não precisa refazer nada disto — já existe e está testado):
+- engine/models.py: SugestaoLeadTime, PendenciaLeadTime, JanelaProducao, CardPedido com
+  pendencia_lead_time/janela_producao/lead_time_sugerido_nao_confirmado.
+- engine/cronograma.py: montar_cronograma(linha, match, hoje, cfg, lead_times_informados=None,
+  cenario="min"|"max") -> Cronograma | PendenciaLeadTime, e montar_janela_producao(linha, match, hoje,
+  cfg, lead_times_informados=None, nova_data_fim=None) -> JanelaProducao | PendenciaLeadTime. Etapas
+  não informadas usam gerar_sugestao() automaticamente (sinalizando lead_time_sugerido_nao_confirmado);
+  PCP é calculado dinamicamente via MRP (_calcular_pcp_dias) a menos que informado explicitamente.
+- api/setor_adapter.py: normalizar_nome_setor() (accent/caixa + tabela fechada ALIASES_SETORES, SEM
+  substring) e gerar_sugestao(codigo_artigo, setor) -> SugestaoLeadTime (histórico confirmado →
+  config/lead_times_sugeridos.yaml → "sem_sugestao").
+- engine/persistencia_lead_time.py: buscar_ultimo(codigo_artigo, setor) e
+  confirmar(codigo_artigo, setor, dias_min, dias_max, confirmado_por), sobre
+  data/lead_times_confirmados.sqlite (UPSERT em codigo_artigo+setor).
+- engine/calendario.py + config/calendario.yaml: feriados 2025-2027 + paradas (férias coletivas
+  marcadas "PLACEHOLDER - substituir"), parsers/comum.py delega pra lá.
+- engine/analise.py: já marca cards com aviso explícito quando usa sugestão não confirmada; bugs
+  A3-A8 corrigidos.
+- `llm/` já existe no projeto como pacote vazio (só __init__.py) — é o lugar certo para os módulos da
+  Fase 2/3 abaixo (ferramentas.py, agente.py, prompt_sistema.md). Não criar um diretório chat/ novo.
+
+LIMPEZA PENDENTE DO BLOCO 2 (fazer primeiro, são dois ajustes de 1 linha cada):
+1. config/calendario.yaml tem a parada de férias coletivas marcada "PLACEHOLDER - substituir" — replicar
+   essa mesma marcação em NOTES.md (seção de pendências), como o PASSO 4 original pedia. Só documentação,
+   não muda comportamento.
+2. parsers/comum.py ainda tem a constante FERIADOS_NACIONAIS (não é mais usada desde que eh_dia_util
+   delega para engine/calendario.py) — remover, é código morto.
+
+PRINCÍPIOS (não negociáveis, reafirmados — já valem nos Blocos 1-2, continuam valendo aqui)
+- A IA nunca calcula data, quantidade, semana ou veredito — sempre a engine Python.
+- Lead time nunca é assumido em silêncio — já garantido pela engine; o agente só reforça isso ao
+  mostrar sempre a sugestão/histórico antes de perguntar, nunca aplicando em silêncio por conta própria.
+- A resposta do analista na conversa é SEMPRE soberana sobre sugestão, histórico ou valor genérico —
+  o agente nunca questiona nem "corrige" uma resposta comparando com o histórico.
+- Somente leitura na API do Excia. Nenhuma ferramenta chama POST/PATCH/DELETE.
+- Todo número exibido é rastreável a uma chamada de ferramenta, com a trilha visível na UI.
+- Sem números mágicos fora de config/. Dúvida de regra de negócio → NOTES.md, nunca inventar.
+- Commits pequenos, um por fase, em português, prefixo feat:/fix:/refactor:. Rodar
+  `python -m pytest tests/ -q` antes e depois de cada fase — suíte 100% verde hoje (100 testes).
+
+FASE 1 — engine injetável (engine/contexto.py, engine/carregador.py, engine/simulacao.py)
+Como especificado na Parte C (Fase 1) do documento de revisão, com um ajuste: `simular()` usa
+`montar_janela_producao()` (não `montar_cronograma()` direto), já que esse é o caminho principal agora,
+não um "modo avançado". `ContextoPedido` guarda pedido, linhas, fichas técnicas, estoques, OFs vinculadas,
+capacidade semanal, parâmetros de regras.yaml e carregado_em. `carregar_contexto(numero_pedido)` é a ÚNICA
+função que fala com o Excia, com cache em memória (TTL 30 min, invalidação manual). Depois desta fase,
+nenhuma função de engine/*.py pode importar api/* diretamente — adicionar um teste que garanta isso por
+inspeção de imports (ver Parte C, Fase 1.3).
+Teste de equivalência obrigatório: analisar_pedido_por_numero(numero) e simular(carregar_contexto(numero),
+{}) têm que dar o mesmo resultado, usando as fixtures já existentes em tests/fixtures/api/.
+
+FASE 2 — Ferramentas (llm/ferramentas.py)
+Funções puras, docstring em PT-BR (é a descrição que o modelo lê), schema de entrada validado por
+pydantic (additionalProperties=false). Lista final:
+  buscar_pedido(numero) → resumo do pedido (cliente, entrega, linhas, OFs existentes)
+  obter_fluxo_do_artigo(codigo_artigo) → sequência real de etapas via FluxoAdapter (já existe, só expor)
+  sugerir_lead_time(codigo_artigo, setor) → chama gerar_sugestao(), devolve dias_min/dias_max/origem/
+    confirmado_em — é o que o agente usa para mostrar "da última vez você informou X" antes de perguntar
+  montar_cronograma(numero_pedido, lead_times_informados: dict[str, {"min": int, "max": int}])
+    → por dentro, carrega o contexto do pedido e chama montar_janela_producao(); devolve:
+       {"status": "pendente", "faltantes": [...], "sugestoes": {...}}  (PendenciaLeadTime)
+    ou {"status": "ok", "semana_w": int, "semana_z": int, "cronograma_otimista": {...},
+        "cronograma_pessimista": {...}, "veredito": "...", "motivos": [...]}  (JanelaProducao)
+  confirmar_lead_time(codigo_artigo, setor, dias_min, dias_max) → grava via
+    engine/persistencia_lead_time.confirmar(); o agente chama isso DEPOIS que o analista responde e
+    ANTES de rechamar montar_cronograma com o valor confirmado
+  consultar_estoque(cod_insumo, cod_cor=None) → estoque tinta/crua, ordens de tinturaria, cascata
+  consultar_capacidade(semana_ini, semana_fim) → pendente por semana vs limite, semanas com folga
+  consultar_calendario(data_ini, data_fim) → feriados e paradas no período (engine/calendario.py)
+  listar_ofs(numero_pedido=None, codigo_artigo=None) → OFs com semana, situação, quantidades
+  explicar_regra(nome) → texto de regras.yaml (ex.: "por que até produção+2 sem autorização?")
+Cada ferramenta devolve dicts pequenos (< 4k tokens); listas longas resumidas com contagem + top N e
+parâmetro detalhar=True para ver tudo. Guardrails no código, não só no prompt: overrides de dias só
+aceitam inteiros 0-60; qualquer ferramenta que falhe devolve erro estruturado em PT-BR, nunca lança
+exceção não tratada pro agente.
+
+FASE 3 — Agente (llm/agente.py, llm/prompt_sistema.md)
+1. `pip install anthropic` (adicionar ao requirements.txt). Chave em ANTHROPIC_API_KEY no .env — nunca
+   hardcoded. Resolver credencial via `anthropic.Anthropic()` (client padrão, sem base_url customizado).
+2. Modelo padrão: `claude-opus-5-5` (US$ 4 / US$ 20 por milhão de tokens entrada/saída, preço vigente em
+   13/10/2026). `claude-sonnet-5-5` (US$ 2 / US$ 10, mesma janela de contexto) é alternativa válida e
+   mais barata para este volume de perguntas estruturadas — rodar os dois lado a lado na Fase 5 antes
+   de fixar qual vai pra produção; não é decisão unilateral do agente de código, reportar os dois
+   resultados.
+3. Usar `client.beta.messages.tool_runner(...)` com as ferramentas da Fase 2 decoradas com `@beta_tool`
+   — não escrever um loop manual de tool-use. `thinking={"type": "adaptive"}` (em claude-opus-5-5 o
+   thinking não pode ser desligado — nem tentar `{"type": "disabled"}`, dá erro; controlar profundidade
+   via `output_config={"effort": "medium"}`, subir para "high" se as avaliações da Fase 5 pedirem).
+   Streaming ligado (`max_tokens` por volta de 64000 em modo streaming).
+4. System prompt em `llm/prompt_sistema.md` (versionado), contendo: papel ("assistente do PCP da
+   Papinha Baby"), glossário do PCP, regras de regras.yaml/lead_times_sugeridos.yaml lidas em tempo de
+   carga, o que a IA não faz (não calcula, não grava, nunca aplica lead time sem perguntar), e a regra
+   central do pivot: "Antes de montar qualquer cronograma, você precisa da duração de CADA etapa do
+   fluxo real do artigo — um valor único ou uma faixa (min-max). Se a ferramenta devolver status
+   'pendente', pergunte ao analista as etapas faltantes, mostrando a sugestão/histórico (via
+   sugerir_lead_time) quando houver e deixando claro que é só sugestão — nunca aplique sem perguntar.
+   A resposta do analista nesta conversa é sempre soberana — nunca questione, nunca substitua por conta
+   própria; no máximo mencione uma vez se o valor for muito diferente do histórico, mas siga com o que
+   o analista confirmar. Depois que o analista responder, chame confirmar_lead_time antes de rechamar
+   montar_cronograma. Se o resultado vier como janela (semana_w a semana_z), apresente os dois
+   extremos, nunca esconda a incerteza atrás de um número só." Colocar cache_control ephemeral no
+   system prompt; manter a lista de ferramentas em ordem fixa (prompt caching — confirmar
+   usage.cache_read_input_tokens > 0 a partir da 2ª mensagem da conversa).
+5. Estado da conversa por sessão de usuário (cookie de sessão já existe no projeto): histórico de
+   mensagens (limitar a 40 turnos, compactar os anteriores) + contexto de pedido ativo. Guardar em
+   data/chat.db (sqlite, seguir o padrão de data/lead_times_confirmados.sqlite) para sobreviver a
+   reinício do processo.
+6. Timeout de 90s por turno; qualquer tool_result com erro usa is_error=true, nunca lança exceção sem
+   tratamento pro usuário.
+
+FASE 4 — Interface (ui/index.html ou novo ui/chat.html — decidir pelo que for mais simples de integrar
+com o layout atual)
+1. Painel "Copiloto": caixa de mensagem, respostas em streaming (SSE via POST /chat/mensagem → GET
+   /chat/stream/{id} em app.py), chips de sugestão ("Analisar pedido 107487", "Tem malha crua pra esse
+   pedido?", "Qual a primeira semana com folga de 3.000 peças?").
+2. Quando a IA chamar montar_cronograma e vier status "ok", renderizar o card do resultado — TEM que
+   saber mostrar tanto cronograma único (semana_w == semana_z) quanto janela (duas datas de término,
+   duas timelines ou uma timeline com faixa visual) — ver seção 3.1 do roadmap pros três casos de
+   veredito (verde/amarelo/vermelho) com janela.
+3. Quando vier status "pendente", a UI mostra a pergunta do agente com as etapas faltantes e as
+   sugestões (se houver), em formato de formulário rápido OU aceita a resposta em texto livre — os dois
+   caminhos têm que funcionar, porque o analista pode responder em linguagem natural no chat.
+4. Cada resposta tem um expansor "Como cheguei nisso" listando ferramentas chamadas + parâmetros +
+   tempo.
+
+FASE 5 — Qualidade e custo
+1. tests/chat/cenarios.yaml com pelo menos 15 perguntas reais (as do feedback do gestor + o cenário do
+   pedido 107487 com faixas propositalmente diferentes em duas etapas) e a resposta esperada em termos
+   de ferramentas chamadas e números-chave. Rodar contra as fixtures (sem Excia real).
+2. Registrar por turno: tokens de entrada/saída/cache, custo estimado, ferramentas chamadas, latência.
+   Endpoint /api/admin/chat-uso com totais por dia (seguir o padrão das outras abas de ui/admin.html).
+3. Comparar claude-opus-5-5 vs claude-sonnet-5-5 nos cenários de tests/chat/cenarios.yaml — reportar
+   qualidade e custo por conversa dos dois antes de fixar o modelo de produção.
+4. Documentar em README.md: como configurar ANTHROPIC_API_KEY, custo esperado por conversa, o que a IA
+   faz e não faz.
+
+ENTREGA MÍNIMA (MVP) = Fases 1, 2, 3 e 4.1-4.2. Fase 4.3-4.4 e 5 fecham a versão comercializável — pode
+ficar pra depois do primeiro teste real com o Alexandre, mas não pular a Fase 5.1 (os cenários de teste)
+antes de qualquer teste com usuário real.
+
+PASSO 7 — Validação de ponta a ponta (fazer ao final, mesmo que entregue em partes)
+1. Fluxo completo com o pedido 107487: pedir ao chat pra analisá-lo, responder com faixas
+   propositalmente diferentes em pelo menos duas etapas, confirmar que a janela [W, Z] sai coerente e
+   que o veredito reflete os dois cenários.
+2. Repetir a mesma pergunta pro mesmo artigo numa conversa nova e confirmar que a sugestão mostrada
+   reflete o que foi confirmado na primeira rodada, e que uma resposta diferente do analista nesta
+   segunda rodada prevalece sem o agente questionar.
+3. Atualizar README.md e NOTES.md com o fluxo novo (lead time por conversa, não por cadastro).
+
+No push final, descrever o que foi implementado por fase — não basta "camada conversacional pronta".
+Reportar aqui antes de eu revisar o diff real: qual modelo (opus ou sonnet) foi usado nos testes da
+Fase 5.3 e por quê, e se a Fase 5 (qualidade/custo) foi completada ou ficou para depois do MVP.
+```
+
