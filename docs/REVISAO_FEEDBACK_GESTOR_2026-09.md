@@ -9,6 +9,14 @@ Pedido de referência do gestor: **107487** (entrega 25/01/2027, semana 2704)
 > nenhum caminho testado.** Ver A1/A2 abaixo para o detalhe. A ação passa a ser contato com o
 > suporte da Excia (Marcos já topou fazer essa pergunta).
 
+> **Atualização 13/10/2026 — pivot de produto.** O gerente de PCP sugeriu, e Marcos aprovou: lead time
+> por etapa deixa de ser cadastro fixo e passa a ser perguntado pelo copiloto, pedido a pedido (o
+> mercado está exigindo mais flexibilidade do que um valor hardcoded por setor permite). Isso muda o
+> PASSO 1 da Sprint 5 abaixo (lead times via cadastro manual) e promove a Sprint 6 (Parte C) de "depois
+> da 5" para entregável principal. **Ver `docs/ROADMAP_COPILOTO_CONVERSACIONAL_2026-10.md` — esse
+> documento é o plano vigente para lead times e para a camada conversacional.** O resto deste
+> documento (bugs A3–A8, exploração da API, calendário, MCP vs tool use) continua válido como está.
+
 Este documento tem três partes:
 
 - **Parte A** — Revisão do código: o que causa cada ponto do feedback, com evidência (arquivo:linha).
