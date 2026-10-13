@@ -233,6 +233,9 @@ class CardPedido:
     # Múltiplas partes (Superior, Inferior, Acessórios, Estampa)
     cronogramas_partes: dict[str, list[dict]] = field(default_factory=dict)
     partes_info: list[dict] = field(default_factory=list)
+    pendencia_lead_time: Optional[PendenciaLeadTime] = None
+    janela_producao: Optional[JanelaProducao] = None
+
 
 
 # ──────────────────────────────────────────────

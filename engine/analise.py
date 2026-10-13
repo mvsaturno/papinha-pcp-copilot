@@ -18,6 +18,7 @@ from engine.models import (
     MatchPedido,
     Pedido,
     ResultadoAnalise,
+    PendenciaLeadTime,
 )
 from engine.matching import casar_com_mrp
 from engine.cronograma import montar_cronograma, ajustar_cronograma_backward
@@ -40,7 +41,9 @@ def analisar(
     hoje: date,
     cfg: dict,
     resultado: Optional[ResultadoAnalise] = None,
+    lead_times_informados: Optional[dict[str, tuple[int, int]]] = None,
 ) -> ResultadoAnalise:
+
     """
     Orquestrador principal (pseudocódigo da seção 6 do ROADMAP).
     Recebe pedidos + MRP + capacidade + config → ResultadoAnalise completo.
@@ -59,7 +62,7 @@ def analisar(
 
     for pedido in pedidos:
         for linha in pedido.linhas:
-            card = _analisar_linha(pedido, linha, mrp, cap, hoje, cfg)
+            card = _analisar_linha(pedido, linha, mrp, cap, hoje, cfg, lead_times_informados)
             cards.append(card)
 
     resultado.pedidos = cards
@@ -73,7 +76,9 @@ def _analisar_linha(
     cap: CapacidadeSemanal,
     hoje: date,
     cfg: dict,
+    lead_times_informados: Optional[dict[str, tuple[int, int]]] = None,
 ) -> CardPedido:
+
     """Analisa uma linha de pedido e gera o card de resultado."""
     buffer_pct = cfg["geral"]["buffer_producao_pct"]
     arr_modo = cfg["geral"]["arredondamento"]
@@ -99,9 +104,16 @@ def _analisar_linha(
 
     # 2. Cronograma draft — se a OF já foi emitida no Excia, inicia na data real da OF
     data_inicio_cronograma = dt_emissao_of if (of_emitida and dt_emissao_of) else hoje
-    cronograma = montar_cronograma(linha, match, data_inicio_cronograma, cfg)
+    cronograma_res = montar_cronograma(linha, match, data_inicio_cronograma, cfg, lead_times_informados)
 
-    # 3. Avaliação de insumos (usa cronograma para determinar bloqueante)
+    if isinstance(cronograma_res, PendenciaLeadTime):
+        cronograma = None
+        pendencia_lead_time = cronograma_res
+    else:
+        cronograma = cronograma_res
+        pendencia_lead_time = None
+
+    # 3. Avaliação de insumos (usa cronograma para determinar bloqueante se houver)
     insumos_avaliados = avaliar_insumos(match.insumos, cronograma, hoje, cfg)
 
     # 4. Semana alvo e mínima
@@ -109,33 +121,44 @@ def _analisar_linha(
     # Se a OF já foi emitida, a semana alvo oficial é a semana gravada no Excia
     if of_emitida and semana_of:
         semana_alvo = semana_of
-        semana_minima = min(cronograma.semana_fim_aass, semana_of)
+        semana_minima = min(cronograma.semana_fim_aass, semana_of) if cronograma else semana_of
     else:
         semana_alvo = _aass_sub(semana_entrega, semanas_antes)
-        semana_minima = cronograma.semana_fim_aass
+        semana_minima = cronograma.semana_fim_aass if cronograma else semana_alvo
 
     # 5. Checagem de capacidade
     analise_cap = verificar_capacidade_pedido(qtd_of, semana_alvo, semana_minima, cap, cfg)
 
-    # 5.5 Ajustar cronograma para backward scheduling
-    if of_emitida and semana_of:
-        # No Excia, o cronograma da OF é ancorado na semana gravada na ordem (término na quarta-feira)
-        fim_producao = quarta_da_semana(semana_of)
-        cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
-        semana_minima = cronograma.semana_fim_aass
-    else:
-        estrategia = cfg["geral"].get("estrategia_cronograma", "jit")
-        if estrategia == "jit" and analise_cap.semana_sugerida is not None:
-            fim_producao = sexta_da_semana(analise_cap.semana_sugerida)
+    # 5.5 Ajustar cronograma para backward scheduling (se cronograma foi gerado)
+    if cronograma:
+        if of_emitida and semana_of:
+            # No Excia, o cronograma da OF é ancorado na semana gravada na ordem (término na quarta-feira)
+            fim_producao = quarta_da_semana(semana_of)
             cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
-            if analise_cap.cabe_no_alvo and cronograma.inicio_mais_tarde and cronograma.inicio_mais_tarde >= hoje:
-                semana_minima = min(semana_minima, analise_cap.semana_sugerida)
+            semana_minima = cronograma.semana_fim_aass
+        else:
+            estrategia = cfg["geral"].get("estrategia_cronograma", "jit")
+            if estrategia == "jit" and analise_cap.semana_sugerida is not None:
+                fim_producao = sexta_da_semana(analise_cap.semana_sugerida)
+                cronograma = ajustar_cronograma_backward(cronograma, fim_producao)
+                if analise_cap.cabe_no_alvo and cronograma.inicio_mais_tarde and cronograma.inicio_mais_tarde >= hoje:
+                    semana_minima = min(semana_minima, analise_cap.semana_sugerida)
 
     # 6. Veredito (seção 3.8 do Sprint 2)
-    veredito, motivos, sugestao, semana_sug = _decidir_veredito(
-        pedido, linha, match, cronograma, insumos_avaliados, analise_cap,
-        semana_alvo, semana_minima, qtd_of, cap, cfg
-    )
+    if pendencia_lead_time:
+        veredito = "AMARELO"
+        motivos = [
+            f"Aguardando definição de lead time para {len(pendencia_lead_time.setores_faltantes)} etapa(s): "
+            f"{', '.join(pendencia_lead_time.setores_faltantes[:5])}{'...' if len(pendencia_lead_time.setores_faltantes) > 5 else ''}"
+        ]
+        sugestao = "Definir duração das etapas do fluxo produtivo no Copiloto para calcular o cronograma preciso."
+        semana_sug = None
+    else:
+        veredito, motivos, sugestao, semana_sug = _decidir_veredito(
+            pedido, linha, match, cronograma, insumos_avaliados, analise_cap,
+            semana_alvo, semana_minima, qtd_of, cap, cfg
+        )
+
 
     # Se a OF já foi emitida no Excia, adicionar aviso contextual positivo de rastreamento
     if of_emitida and numero_of:
@@ -208,7 +231,9 @@ def _analisar_linha(
         horizonte_longo=horizonte_longo,
         avisos_flags=flags,
         dados_brutos=dados_brutos,
+        pendencia_lead_time=pendencia_lead_time,
     )
+
 
 
 def _decidir_veredito(

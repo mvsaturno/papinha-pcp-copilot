@@ -54,3 +54,6 @@ vm_access.md
 deploy_info.md
 *.key
 *.pem
+*.sqlite
+*.db
+

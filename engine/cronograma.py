@@ -1,25 +1,30 @@
 """
-engine/cronograma.py — Regra 2: montagem do cronograma draft (seção 3.5 do ROADMAP).
-Lead times derivados das OFs reais (Mapa SEM 2637) — DRAFT para validação.
-Simplificação documentada: dias corridos, sem feriados/fins de semana.
+engine/cronograma.py — Regra 2: montagem do cronograma draft parametrizável (Sprint 5/6).
+Calcula cronograma a partir de lead_times_informados e gera JanelaProducao [semana_w, semana_z].
+Se faltar qualquer etapa do fluxo real, devolve PendenciaLeadTime (nunca assume valor em silêncio).
 """
 
 from __future__ import annotations
 
-import re
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 
-from engine.models import Cronograma, FaseCronograma, MatchPedido, LinhaPedido
+from engine.models import (
+    Cronograma,
+    FaseCronograma,
+    MatchPedido,
+    LinhaPedido,
+    PendenciaLeadTime,
+    JanelaProducao,
+    SugestaoLeadTime,
+)
 from parsers.comum import (
     semana_aass,
     recuar_dias_uteis_excia,
     avancar_dias_uteis_excia,
-    contar_dias_uteis_excia,
-    quarta_da_semana,
 )
 from api.fluxo_adapter import FluxoAdapter
-from api.setor_adapter import SetorAdapter
+from api.setor_adapter import normalizar_nome_setor, gerar_sugestao
 
 
 def montar_cronograma(
@@ -27,30 +32,31 @@ def montar_cronograma(
     match: Optional[MatchPedido],
     hoje: date,
     cfg: dict,
-) -> Cronograma:
+    lead_times_informados: Optional[dict[str, tuple[int, int] | list[int] | int | dict]] = None,
+) -> Cronograma | PendenciaLeadTime:
     """
-    Monta o cronograma draft para uma linha de pedido.
-    Detecta a rota pelo nome do artigo ou via API e calcula datas de cada fase
-    usando os lead times dinâmicos dos setores.
+    Monta o cronograma draft para uma linha de pedido usando estritamente os lead times informados.
+    Se faltar a duração de alguma etapa do fluxo real do artigo, retorna PendenciaLeadTime.
+    Quando o valor informado for uma faixa (min != max), usa o valor mínimo para este cálculo pontual.
     """
-    fases_dias = cfg["fases_dias"]
-    rotas_cfg = cfg["rotas"]
-    overrides_cfg = cfg.get("overrides_fases_por_rota", {})
-    lt_futuro = cfg["lead_times_estoque_futuro_dias"]
+    rotas_cfg = cfg.get("rotas", {})
 
-    # Dados de OF emitida
-    of_emitida = getattr(linha, "of_emitida", False) or (match and match.of_emitida)
-    dt_emissao_of = getattr(linha, "dt_emissao_of", None) or (match and match.dt_emissao_of)
-    semana_of = getattr(linha, "semana_of_oficial", None) or (match and match.semana_of_oficial)
+    # 1. Normalizar lead times informados
+    lts_norm: dict[str, tuple[int, int]] = {}
+    if lead_times_informados:
+        for k, v in lead_times_informados.items():
+            k_norm = normalizar_nome_setor(k)
+            if isinstance(v, (tuple, list)) and len(v) >= 2:
+                lts_norm[k_norm] = (int(v[0]), int(v[1]))
+            elif isinstance(v, dict) and "min" in v and "max" in v:
+                lts_norm[k_norm] = (int(v["min"]), int(v["max"]))
+            elif isinstance(v, (int, float)):
+                lts_norm[k_norm] = (int(v), int(v))
 
-    # 1. Calcular duração da fase PCP (dinâmica — seção 3.5)
-    pcp_dias = _calcular_pcp_dias(match, fases_dias, lt_futuro, cfg)
-
-    # 2. Obter partes e códigos de fluxo via API ParteProdutoLista
+    # 2. Obter partes e códigos de fluxo via API ParteProdutoLista / Fluxo
     fluxo_adapter = FluxoAdapter()
-    setor_adapter = SetorAdapter()
     partes_produto = []
-    if linha.codigo:
+    if getattr(linha, "codigo", None):
         try:
             partes_produto = fluxo_adapter.buscar_todas_partes_produto(linha.codigo)
         except Exception:
@@ -60,7 +66,6 @@ def montar_cronograma(
     if not fluxo_inferido and partes_produto:
         fluxo_inferido = fluxo_adapter.buscar_fluxo_do_produto(linha.codigo)
 
-    # 3. Detectar rota dinâmica pela API
     fases_dinamicas = None
     if fluxo_inferido:
         try:
@@ -68,38 +73,54 @@ def montar_cronograma(
         except Exception:
             pass
 
-    # Identificar nomes das fases da rota
     if fases_dinamicas:
         rota_nome = f"API ({fluxo_inferido})"
-        nomes_fases_rota = fases_dinamicas
+        nomes_fases_rota = list(fases_dinamicas)
     else:
-        rota_nome = _detectar_rota(linha.descricao, rotas_cfg)
-        nomes_fases_rota = rotas_cfg.get(rota_nome, rotas_cfg["DEFAULT"])
+        rota_nome = _detectar_rota(getattr(linha, "descricao", ""), rotas_cfg)
+        nomes_fases_rota = list(rotas_cfg.get(rota_nome, rotas_cfg.get("DEFAULT", [])))
 
-    # Se a rota já possui etapas explícitas de TECELAGEM ou TINTURARIA, PCP é o tempo de liberação da ordem (2 dias)
-    tem_etapas_tecido = any("TECELAGEM" in f.upper() or "TINTURARIA" in f.upper() for f in nomes_fases_rota)
-    if tem_etapas_tecido and not (of_emitida and dt_emissao_of and semana_of):
-        pcp_dias = fases_dias.get("PCP_MIN", 2)
+    # 3. Verificar etapas requeridas e identificar faltantes
+    todos_setores = list(nomes_fases_rota)
+    for p in partes_produto:
+        for fn in p.get("fases", []):
+            if fn not in todos_setores:
+                todos_setores.append(fn)
 
-    def _obter_dias_fase(nome: str, pcp_dias_atual: Optional[int] = None) -> int:
-        p_dias = pcp_dias if pcp_dias_atual is None else pcp_dias_atual
-        return setor_adapter.obter_lead_time_fase(nome, p_dias)
+    setores_faltantes: list[str] = []
+    sugestoes: dict[str, SugestaoLeadTime] = {}
 
-    # Se a OF já foi emitida, calcular PCP exato da ordem entre emissão e semana oficial
-    if of_emitida and dt_emissao_of and semana_of:
-        fim_of = quarta_da_semana(semana_of)
-        dias_outras = sum(_obter_dias_fase(fn, 0) for fn in nomes_fases_rota if "PCP" not in fn.upper())
-        dias_uteis_totais = contar_dias_uteis_excia(dt_emissao_of, fim_of)
-        if dias_uteis_totais > dias_outras:
-            pcp_dias = dias_uteis_totais - dias_outras
+    for f_nome in todos_setores:
+        f_norm = normalizar_nome_setor(f_nome)
+        if f_norm not in lts_norm:
+            # Tentar matching por substring
+            matched_key = None
+            for k in lts_norm:
+                if k == f_norm or k in f_norm or f_norm in k:
+                    matched_key = k
+                    break
+            if matched_key:
+                lts_norm[f_norm] = lts_norm[matched_key]
+            else:
+                if f_norm not in setores_faltantes:
+                    setores_faltantes.append(f_norm)
+                    sugestoes[f_norm] = gerar_sugestao(getattr(linha, "codigo", "") or "", f_nome)
 
-    # Montar fases_rota com a duração correta de cada fase
-    fases_rota = []
+    # Se faltar qualquer setor, devolve PendenciaLeadTime sem inventar número
+    if setores_faltantes:
+        return PendenciaLeadTime(setores_faltantes=setores_faltantes, sugestoes=sugestoes)
+
+    # 4. Resolver duração de cada fase da rota principal (usando min se for faixa)
+    fases_rota: list[tuple[str, int]] = []
+    pcp_dias = 2
     for f_nome in nomes_fases_rota:
-        d = _obter_dias_fase(f_nome, pcp_dias)
+        f_norm = normalizar_nome_setor(f_nome)
+        d = lts_norm[f_norm][0]
+        if "PCP" in f_norm:
+            pcp_dias = d
         fases_rota.append((f_nome, d))
 
-    # 4. Calcular cronograma principal forward
+    # 5. Calcular cronograma principal forward
     def _calcular_fases_forward(lista_fases_dias, dt_inicio):
         fases_calc = []
         cur = dt_inicio
@@ -113,7 +134,7 @@ def montar_cronograma(
     fases, data_fim = _calcular_fases_forward(fases_rota, hoje)
     semana_fim = semana_aass(data_fim)
 
-    # 5. Calcular cronogramas de cada parte (se houver múltiplas)
+    # 6. Calcular cronogramas de cada parte (se houver múltiplas)
     cronos_partes: dict[str, list[FaseCronograma]] = {}
     partes_info_list = []
 
@@ -122,7 +143,7 @@ def montar_cronograma(
         p_fases_nomes = p.get("fases", [])
         if not p_fases_nomes:
             continue
-        p_fases_dias = [(fn, _obter_dias_fase(fn)) for fn in p_fases_nomes]
+        p_fases_dias = [(fn, lts_norm[normalizar_nome_setor(fn)][0]) for fn in p_fases_nomes]
         p_fases_calc, _ = _calcular_fases_forward(p_fases_dias, hoje)
         cronos_partes[p_desc] = p_fases_calc
         partes_info_list.append({
@@ -143,87 +164,61 @@ def montar_cronograma(
     )
 
 
-def _detectar_rota(descricao: str, rotas_cfg: dict) -> str:
-    """
-    Detecta a rota de produção pelo nome do artigo.
-    Verifica keywords na ordem de especificidade (mais específico primeiro).
-    Fallback: DEFAULT.
-    """
-    desc_upper = descricao.upper()
-
-    # Ordem: mais específico primeiro
-    for chave in ["PIJAMA", "CONJUNTO", "VESTIDO", "REGATA", "CAMISETA"]:
-        if chave in desc_upper and chave in rotas_cfg:
-            return chave
-
-    return "DEFAULT"
-
-
-def _calcular_pcp_dias(
+def montar_janela_producao(
+    linha: LinhaPedido,
     match: Optional[MatchPedido],
-    fases_dias: dict,
-    lt_futuro: dict,
+    hoje: date,
     cfg: dict,
-) -> int:
+    lead_times_informados: dict[str, tuple[int, int] | list[int] | int | dict],
+    nova_data_fim: Optional[date] = None,
+) -> JanelaProducao | PendenciaLeadTime:
     """
-    Calcula a duração dinâmica da fase PCP (espera pelo tecido principal).
-    Conforme seção 3.5:
-      - OK_ESTOQUE      → pcp_min (2 dias)
-      - Tinturaria/PendTint → lead_tinturaria (14 dias)
-      - Tecelagem       → lead_tecelagem + lead_tinturaria (21 dias)
-      - FALTA           → lead_compra + lead_tecelagem + lead_tinturaria (28 dias)
-      - Não localizado  → pcp_padrao (21 dias) + alerta
+    Calcula a janela de produção [semana_w, semana_z] executando o cronograma duas vezes:
+      - Cenário otimista: usando dias_min de cada etapa
+      - Cenário pessimista: usando dias_max de cada etapa
+    Se faltar qualquer etapa do fluxo, devolve PendenciaLeadTime.
+    Caso degenerado (todas as faixas com min == max) -> semana_w == semana_z e cronogramas idênticos.
     """
-    pcp_min = fases_dias.get("PCP_MIN", 2)
-    pcp_padrao = fases_dias.get("PCP_PADRAO", 21)
+    if not lead_times_informados:
+        return montar_cronograma(linha, match, hoje, cfg, {})
 
-    lt_compra = lt_futuro.get("compra", 7)
-    lt_tecelagem = lt_futuro.get("tecelagem", 7)
-    lt_tinturaria = lt_futuro.get("tinturaria", 14)
+    # Monta dicts auxiliares para min e max
+    lts_min: dict[str, tuple[int, int]] = {}
+    lts_max: dict[str, tuple[int, int]] = {}
 
-    keywords_tecido = cfg.get("tecido_principal_keywords", ["MALHA", "RIBANA"])
+    for k, v in lead_times_informados.items():
+        if isinstance(v, (tuple, list)) and len(v) >= 2:
+            d_min, d_max = int(v[0]), int(v[1])
+        elif isinstance(v, dict) and "min" in v and "max" in v:
+            d_min, d_max = int(v["min"]), int(v["max"])
+        elif isinstance(v, (int, float)):
+            d_min, d_max = int(v), int(v)
+        else:
+            d_min, d_max = 1, 1
+        lts_min[k] = (d_min, d_min)
+        lts_max[k] = (d_max, d_max)
 
-    if match is None or not match.insumos:
-        # Sem MRP — usar padrão
-        return pcp_padrao
+    crono_otimista = montar_cronograma(linha, match, hoje, cfg, lts_min)
+    if isinstance(crono_otimista, PendenciaLeadTime):
+        return crono_otimista
 
-    if not match.tecido_principal_encontrado:
-        # Tecido não localizado — usar padrão
-        return pcp_padrao
+    crono_pessimista = montar_cronograma(linha, match, hoje, cfg, lts_max)
+    if isinstance(crono_pessimista, PendenciaLeadTime):
+        return crono_pessimista
 
-    # Encontrar o insumo de tecido principal
-    tecido_insumo = None
-    for ins in match.insumos:
-        desc_upper = ins.descricao.upper()
-        for kw in keywords_tecido:
-            if kw in desc_upper:
-                tecido_insumo = ins
-                break
-        if tecido_insumo:
-            break
+    if nova_data_fim:
+        crono_otimista = ajustar_cronograma_backward(crono_otimista, nova_data_fim)
+        crono_pessimista = ajustar_cronograma_backward(crono_pessimista, nova_data_fim)
 
-    if tecido_insumo is None:
-        return pcp_padrao
+    semana_w = crono_otimista.semana_fim_aass
+    semana_z = crono_pessimista.semana_fim_aass
 
-    status = tecido_insumo.status
-
-    if status == "OK_ESTOQUE":
-        return pcp_min
-
-    if status == "OK_FUTURO":
-        # Descobrir de qual coluna vem
-        if tecido_insumo.aloc_tinturaria > 0 or tecido_insumo.aloc_pend_tint > 0:
-            return lt_tinturaria  # 14 dias
-        if tecido_insumo.aloc_tecelagem > 0:
-            return lt_tecelagem + lt_tinturaria  # 7 + 14 = 21 dias
-        if tecido_insumo.aloc_compra > 0:
-            return lt_compra + lt_tecelagem + lt_tinturaria  # 7 + 7 + 14 = 28 dias
-        return pcp_padrao
-
-    if status == "FALTA":
-        return lt_compra + lt_tecelagem + lt_tinturaria  # 28 dias
-
-    return pcp_padrao
+    return JanelaProducao(
+        cenario_otimista=crono_otimista,
+        cenario_pessimista=crono_pessimista,
+        semana_w=semana_w,
+        semana_z=semana_z,
+    )
 
 
 def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Cronograma:
@@ -252,10 +247,8 @@ def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Crono
         novas.reverse()
         return novas
 
-    # 1. Ajustar fases da rota principal
     novas_fases = _calcular_backward(crono.fases, nova_data_fim)
 
-    # 2. Ajustar fases de cada uma das partes (Superior, Inferior, Acessórios, Estampa)
     novos_cronos_partes = {}
     for p_nome, p_fases in crono.cronogramas_partes.items():
         novos_cronos_partes[p_nome] = _calcular_backward(p_fases, nova_data_fim)
@@ -268,3 +261,16 @@ def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Crono
     crono.inicio_mais_tarde = novas_fases[0].inicio if novas_fases else None
 
     return crono
+
+
+def _detectar_rota(descricao: str, rotas_cfg: dict) -> str:
+    """
+    Detecta a rota de produção pelo nome do artigo.
+    Verifica keywords na ordem de especificidade (mais específico primeiro).
+    Fallback: DEFAULT.
+    """
+    desc_upper = (descricao or "").upper()
+    for chave in ["PIJAMA", "CONJUNTO", "VESTIDO", "REGATA", "CAMISETA"]:
+        if chave in desc_upper and chave in rotas_cfg:
+            return chave
+    return "DEFAULT"
