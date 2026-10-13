@@ -4,6 +4,11 @@ scripts/explorar_lead_times.py — Rodar NA VM (onde a API do Excia é alcançá
 Objetivo: descobrir onde o Excia expõe, via API, (a) os lead times por setor e
 (b) o cronograma planejado da OF (datas por setor), para um pedido de referência.
 
+Atualizado em 13/10/2026: a Papinha Baby liberou GET /Setor/:codigo para o nosso token
+(estava 401 na exploração de 23/09). A seção [1] agora varre TODOS os setores (não só
+uma amostra de 3) e destaca qualquer campo não documentado com valor "não trivial"
+(diferente de 0/vazio/nulo) — candidato a ser o prazo por setor que procuramos.
+
 Uso:
     cd ~/papinha-pcp-copilot && python scripts/explorar_lead_times.py 107487
 
@@ -95,16 +100,51 @@ def main():
         setores = get(client, "SetorLista")
         salvar("SetorLista", setores)
         print(f"  {len(setores)} setores. campos na lista: {sorted(setores[0].keys()) if setores else '-'}")
+
+        # Setor/:codigo foi liberado para o nosso token em 13/10/2026 (estava 401 na 1a exploração).
+        # Agora varremos TODOS os setores, não só uma amostra de 3 — é o endpoint mais provável
+        # de conter o prazo por setor, então vale a varredura completa (165 chamadas, ~1 req/s).
         campos_setor = set()
-        for s in (setores if isinstance(setores, list) else [])[:3]:  # amostra: 3 setores bastam
+        detalhes = {}
+        bloqueado = False
+        for s in setores if isinstance(setores, list) else []:
             cod = str(s.get("codigo", "")).strip()
-            det = get(client, f"Setor/{cod}") if cod else []
+            if not cod:
+                continue
+            try:
+                det = get(client, f"Setor/{cod}")
+            except NaoAutorizado as e:
+                print(f"  PULANDO Setor/{cod}: {e}")
+                bloqueado = True
+                continue
             if det:
-                salvar(f"Setor_{cod}", det)
+                detalhes[cod] = det
                 for item in det:
                     campos_setor |= set(item.keys())
+        salvar("Setor_detalhado_todos", detalhes)
+
         extras = campos_setor - {"codigo", "descricao", "tipo"}
+        print(f"  {len(detalhes)}/{len(setores)} setores consultados em Setor/:codigo")
         print(f"  campos em Setor/:codigo: {sorted(campos_setor) or '-'} | NÃO documentados: {sorted(extras) or 'nenhum'}")
+        if bloqueado:
+            print("  ATENÇÃO: alguns setores ainda deram 401 — a liberação pode ser parcial.")
+
+        if extras:
+            # Para cada campo extra, mostrar quantos setores têm valor "não trivial"
+            # (diferente de 0, 0.0, "", None, "N") — candidato a lead time/prazo real.
+            for campo in sorted(extras):
+                nao_triviais = []
+                for cod, det in detalhes.items():
+                    for item in det:
+                        v = item.get(campo)
+                        if v not in (0, 0.0, "", None, "N", "0"):
+                            nao_triviais.append((cod, item.get("descricao"), v))
+                if nao_triviais:
+                    print(f"  campo '{campo}' com valores não triviais ({len(nao_triviais)} setores), amostra:")
+                    for cod, desc, v in nao_triviais[:15]:
+                        print(f"    {cod} {desc}: {campo}={v!r}")
+                else:
+                    print(f"  campo '{campo}': presente mas SEMPRE trivial (0/vazio/nulo) nos {len(detalhes)} setores — não é o prazo.")
 
     def s2():
         ped = get(client, "BuscarPedido", params={"numero": numero_pedido})
@@ -184,7 +224,7 @@ def main():
             else:
                 print(f"  setor {cod_st} {desc_st}: sem movimentação")
 
-    secao("[1] SetorLista + amostra de Setor/:codigo", s1)
+    secao("[1] SetorLista + Setor/:codigo (todos os setores — endpoint liberado em 13/10/2026)", s1)
     secao(f"[2] Pedido {numero_pedido} → ParteProdutoLista → Fluxo/:codigo", s2)
     secao(f"[3] Pedido/Fluxo?numero={numero_pedido} — datas planejadas por setor?", s3)
     secao(f"[4] OPLista — OFs do pedido {numero_pedido}", s4)
