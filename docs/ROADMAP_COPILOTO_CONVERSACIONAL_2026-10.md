@@ -427,3 +427,92 @@ PASSO 7 — Validação de ponta a ponta
 3. Atualizar README.md e NOTES.md com o novo fluxo (lead time por conversa, não por cadastro).
 ```
 
+---
+
+## 9. Revisão do Bloco 1 (commit `3e5d815`, 13/10/2026) — correções obrigatórias antes do Bloco 2
+
+Revisão feita puxando o diff real (`git diff a2f0469 3e5d815`), não o resumo reportado pelo agente.
+`engine/models.py` está correto, igual ao especificado no PASSO 1. Mas `engine/cronograma.py` e
+`engine/analise.py` têm três problemas — um deles quebra a aplicação em produção hoje. **Bloco 2
+(PASSO 4 calendário / PASSO 5 bugs A3-A8) só deve começar depois desses três pontos corrigidos e
+testados.**
+
+### PROMPT — colar no Antigravity
+
+```text
+Revisão do Bloco 1 (commit 3e5d815) encontrou 3 problemas em engine/cronograma.py e
+engine/analise.py. Corrigir os três, nesta ordem, antes de iniciar qualquer tarefa do Bloco 2.
+
+PROBLEMA 1 (CRÍTICO — quebra a produção agora) — app.py e engine/orquestrador.py NÃO foram
+alterados neste commit: a chamada em produção continua sendo
+analisar(pedidos, mrp, cap, hoje, CONFIG, resultado), sem passar lead_times_informados. Como esse
+parâmetro é opcional e hoje ninguém o preenche (o chat ainda não existe), montar_cronograma()
+recebe lts_norm vazio, todo setor de todo fluxo cai em setores_faltantes, e TODO pedido analisado
+hoje — incluindo o 107487 que o Alexandre está testando — devolve PendenciaLeadTime. Resultado:
+veredito fixo "AMARELO", sem semana sugerida, sem cronograma algum, para 100% dos pedidos. Isso é
+uma regressão total do caso de uso que está em uso real agora, não um caso de borda.
+
+Correção exigida: enquanto o chat (PASSO 6) não existir, montar_cronograma() precisa continuar
+produzindo um cronograma utilizável mesmo sem lead_times_informados completo, usando
+automaticamente o valor de gerar_sugestao() (api/setor_adapter.py, já implementado no PASSO 2)
+como valor efetivo para qualquer etapa que não veio no dict informado — min e max da sugestão,
+nunca um fallback diferente. Ajustar também engine/analise.py: quando QUALQUER etapa foi resolvida
+via sugestão automática (não por um valor vindo de lead_times_informados), marcar o card
+resultante com um aviso explícito e visível (ex.: flag "lead_time_sugerido_nao_confirmado": true,
+e incluir nos motivos/avisos do veredito algo como "Lead time de N etapa(s) ainda não confirmado
+pelo analista — usando sugestão: <origem>"). O veredito não precisa virar AMARELO automaticamente
+por isso (mantém a lógica normal de _decidir_veredito), mas o aviso tem que aparecer no card e na
+UI atual, para o gestor sempre saber que aquele cronograma usa valor sugerido, não confirmado — é
+isso que cumpre o princípio "lead time nunca é assumido em silêncio" sem derrubar o uso diário da
+aplicação. PendenciaLeadTime só deve ser devolvida quando gerar_sugestao() também não tiver
+nenhuma sugestão (origem="sem_sugestao", dias_min=dias_max=0) para aquela etapa — nesse caso sim,
+não há nenhum número para usar, e cai no fluxo de pendência real.
+
+PROBLEMA 2 — a função _calcular_pcp_dias() (cálculo da duração da etapa PCP a partir do status do
+insumo: OK_ESTOQUE→2d, via tinturaria→14d, via tecelagem→21d, via compra/FALTA→28d) foi apagada
+inteiramente, e o parâmetro match de montar_cronograma() ficou sem uso (pcp_dias virou um valor
+fixo "= 2"). Essa lógica é independente do pivot de lead-time-por-conversa — ela decide a duração
+de UMA etapa (PCP) a partir da disponibilidade real do insumo no MRP, não de um cadastro estático,
+e segue necessária. Restaurar _calcular_pcp_dias() (pode ter outro nome) e voltar a usá-la para
+resolver a duração da etapa PCP a partir de match/match.insumos, exatamente como antes do commit
+3e5d815 — a única mudança deve ser que as OUTRAS etapas (não-PCP) agora vêm de
+lead_times_informados/sugestão em vez do cadastro YAML antigo. Se o analista informar
+explicitamente um valor para "PCP" no chat (lead_times_informados), esse valor informado prevalece
+sobre o cálculo automático — a sovereignty da resposta do analista (seção 4 do ROADMAP) vale também
+para PCP.
+
+PROBLEMA 3 — em montar_cronograma(), o bloco de matching por substring:
+    for k in lts_norm:
+        if k == f_norm or k in f_norm or f_norm in k:
+            matched_key = k
+é perigoso porque normalizar_nome_setor() (api/setor_adapter.py) só remove acento/caixa, sem
+tabela de aliases. Isso pode copiar o lead time confirmado de uma etapa (ex. "COSTURA") para outra
+etapa totalmente diferente cujo nome normalizado contém ou é contido pelo primeiro (ex.
+"QUAL_COSTURA", "SUB_COSTURA") — sem nunca sinalizar pendência nem perguntar nada ao analista.
+Isso viola diretamente o princípio "nunca assumir lead time em silêncio" do projeto.
+Correção exigida: remover o matching por substring. Cada etapa do fluxo real (todos_setores) só é
+considerada resolvida se normalizar_nome_setor(etapa) tiver uma correspondência EXATA em lts_norm
+(ou, com a correção do Problema 1, em gerar_sugestao()). Qualquer etapa sem correspondência exata
+usa a sugestão (Problema 1) ou cai em setores_faltantes/pendência real, nunca herda o valor de uma
+etapa de nome parecido. Se no futuro houver necessidade real de tratar sinônimos de nome de setor
+(ex.: a API da Excia usar grafias diferentes para a mesma etapa), isso deve ser uma tabela explícita
+de aliases, revisada por nós, nunca um match heurístico por substring.
+
+VALIDAÇÃO OBRIGATÓRIA antes de reportar o Bloco 1 como concluído:
+1. Teste de regressão cobrindo exatamente o cenário de produção atual: chamar
+   analisar_pedido_por_numero(numero, CONFIG) SEM nenhum lead_times_informados (como app.py faz
+   hoje) para um pedido real (ex. equivalente ao 107487) e assertar que o resultado tem um
+   cronograma válido (não None) e o aviso de "sugestão não confirmada" presente — nunca
+   PendenciaLeadTime nesse caminho, a menos que genuinamente não haja nenhuma sugestão disponível.
+2. Teste cobrindo o Problema 2: um match com insumo em status "FALTA" (ou outro status não-estoque)
+   deve produzir pcp_dias igual ao valor calculado por via de compra+tecelagem+tinturaria, igual ao
+   comportamento anterior ao commit 3e5d815 — não o valor fixo 2.
+3. Teste cobrindo o Problema 3: dois setores cujo nome normalizado é substring um do outro (ex.
+   "COSTURA" e "QUAL_COSTURA") devem ser tratados como pendências/sugestões independentes — nunca
+   um herdando o lead time informado do outro.
+4. Rodar a suíte completa (76 testes atuais + os novos) e confirmar 100% verde antes do push.
+5. No push, descrever exatamente o que mudou nos 3 pontos acima — não basta dizer "ajustes finos".
+
+Só depois dessa validação o Bloco 2 (PASSO 4 — calendário, PASSO 5 — bugs A3-A8) deve começar.
+```
+
