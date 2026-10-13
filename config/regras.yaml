@@ -4,6 +4,8 @@ geral:
   tolerancia_match_qtd_pct: 15  # aumentado: 5% era muito restrito para OFs sem vínculo direto via API
   semanas_antes_entrega_cliente: 2
   semanas_autonomia_pcp: 3
+  semanas_entre_producao_e_entrega: 1
+  semanas_maximo_sem_autorizacao: 2
   permitir_consumir_margem: true
   horizonte_sinalizacao_dias: 90
   estrategia_cronograma: "jit"  # jit = backward scheduling (terminar o mais tarde possível dentro da janela)

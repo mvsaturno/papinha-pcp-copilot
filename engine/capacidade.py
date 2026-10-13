@@ -10,7 +10,15 @@ from datetime import date
 from typing import Optional
 
 from engine.models import AnaliseCapacidade, CapacidadeSemanal
-from parsers.comum import aass_add, semana_aass, sexta_da_semana, formatar_data_br
+from parsers.comum import aass_add, semana_aass, sexta_da_semana, formatar_data_br, semanas_entre
+
+
+def aass_min(a: int, b: int) -> int:
+    return a if semanas_entre(b, a) >= 0 else b
+
+
+def aass_max(a: int, b: int) -> int:
+    return a if semanas_entre(a, b) >= 0 else b
 
 
 def alertas_globais_capacidade(
@@ -29,7 +37,7 @@ def alertas_globais_capacidade(
 
     # Semanas estouradas na programação ativa (>= semana_atual)
     for s, pend in cap.periodos.items():
-        if s >= semana_atual and pend > limite:
+        if semanas_entre(s, semana_atual) >= 0 and pend > limite:
             excesso = pend - limite
             alertas.append(
                 f"🔴 Semana {s} estourada: {pend:,} peças ({excesso:,} acima do limite {limite:,})"
@@ -67,17 +75,16 @@ def verificar_capacidade_pedido(
     # Encontrar semana sugerida priorizando Backward (JIT)
     semana_sugerida = None
     
-    # helper para criar listas de semanas
+    # helper para criar listas de semanas sem quebrar na virada de ano
     def range_semanas(start, end, step=-1):
-        # se start/end estiverem fora de ordem para o step, retorna lista vazia
         lst = []
         curr = start
         if step == -1:
-            while curr >= end:
+            while semanas_entre(curr, end) >= 0:
                 lst.append(curr)
                 curr = aass_add(curr, -1)
         else:
-            while curr <= end:
+            while semanas_entre(end, curr) >= 0:
                 lst.append(curr)
                 curr = aass_add(curr, 1)
         return lst
@@ -96,34 +103,52 @@ def verificar_capacidade_pedido(
     candidatas = janela + extra_2 + extra_1
     
     for s in candidatas:
-        if s >= semana_minima and (pend(s) + qtd_of) <= limite:
+        if semanas_entre(s, semana_minima) >= 0 and (pend(s) + qtd_of) <= limite:
             semana_sugerida = s
             break
             
     # Se não coube em nenhuma (ou não achou), procura a primeira livre após alvo
     if semana_sugerida is None:
         # Procurar >= semana_cliente
-        s = max(semana_cliente, semana_minima)
+        s = aass_max(semana_cliente, semana_minima)
         limite_busca = aass_add(semana_alvo, 12)
-        while s <= limite_busca:
+        while semanas_entre(limite_busca, s) >= 0:
             if (pend(s) + qtd_of) <= limite:
                 semana_sugerida = s
                 break
             s = aass_add(s, 1)
 
     # Calcular intervalo dinâmico de semanas para exibição na UI
-    # Exibe a janela de autonomia toda e até alvo+1 se permitida a margem
-    start_sem = min(semana_minima, aass_add(semana_alvo, -autonomia), semana_sugerida or semana_alvo)
-    end_sem = max(aass_add(semana_alvo, 1 if permitir_margem else 0), semana_sugerida or semana_alvo)
+    candidatos_start = [semana_minima, aass_add(semana_alvo, -autonomia)]
+    if semana_sugerida:
+        candidatos_start.append(semana_sugerida)
+    else:
+        candidatos_start.append(semana_alvo)
+
+    start_sem = candidatos_start[0]
+    for cs in candidatos_start[1:]:
+        start_sem = aass_min(start_sem, cs)
+
+    candidatos_end = [aass_add(semana_alvo, 1 if permitir_margem else 0)]
+    if semana_sugerida:
+        candidatos_end.append(semana_sugerida)
+    else:
+        candidatos_end.append(semana_alvo)
+
+    end_sem = candidatos_end[0]
+    for ce in candidatos_end[1:]:
+        end_sem = aass_max(end_sem, ce)
 
     semanas_exibir = []
     curr = start_sem
-    while curr <= end_sem:
+    jan_ini = aass_add(semana_alvo, -autonomia)
+
+    while semanas_entre(end_sem, curr) >= 0:
         p = pend(curr)
         situacao = "✅ OK" if (p + qtd_of) <= limite else "❌ Estourado"
         # Calcular ociosidade na janela (pct livre)
         pct_livre = ((limite - p) / limite) * 100 if limite > 0 else 0
-        is_ociosa = pct_livre > ociosidade_alerta_pct and (aass_add(semana_alvo, -autonomia) <= curr <= semana_alvo)
+        is_ociosa = pct_livre > ociosidade_alerta_pct and (semanas_entre(curr, jan_ini) >= 0 and semanas_entre(semana_alvo, curr) >= 0)
 
         semanas_exibir.append({
             "aass": curr,
@@ -145,6 +170,9 @@ def verificar_capacidade_pedido(
             f"{pend(semana_alvo)} + {qtd_of} = {pend(semana_alvo) + qtd_of} > {limite}"
         )
 
+    janela_inicio = aass_add(semana_alvo, -autonomia)
+    janela_fim = semana_alvo
+
     return AnaliseCapacidade(
         semana_alvo=semana_alvo,
         qtd_of=qtd_of,
@@ -152,4 +180,5 @@ def verificar_capacidade_pedido(
         cabe_no_alvo=cabe_no_alvo,
         semana_sugerida=semana_sugerida,
         avisos=avisos,
+        janela_autonomia={"inicio": janela_inicio, "fim": janela_fim},
     )

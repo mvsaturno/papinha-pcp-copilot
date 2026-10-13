@@ -300,49 +300,131 @@
     </div>
   </header>
 
-  <!-- Estatísticas -->
-  <div class="stats-row">
-    <div class="stat-card">
-      <div class="lbl">Total de Usuários</div>
-      <div id="stat-total" class="val">0</div>
+  <!-- Abas de Navegação -->
+  <div style="display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px">
+    <button id="tab-btn-users" onclick="alternarAbaAdmin('users')" class="btn btn-primary" style="padding:8px 16px">
+      👥 Usuários
+    </button>
+    <button id="tab-btn-calendario" onclick="alternarAbaAdmin('calendario')" class="btn btn-secondary" style="padding:8px 16px">
+      📅 Calendário &amp; Paradas
+    </button>
+  </div>
+
+  <!-- CONTEÚDO: USUÁRIOS -->
+  <div id="tab-content-users">
+    <!-- Estatísticas Usuários -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="lbl">Total de Usuários</div>
+        <div id="stat-total" class="val">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Administradores</div>
+        <div id="stat-admins" class="val">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Operadores Ativos</div>
+        <div id="stat-ativos" class="val">0</div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="lbl">Administradores</div>
-      <div id="stat-admins" class="val">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="lbl">Operadores Ativos</div>
-      <div id="stat-ativos" class="val">0</div>
+
+    <!-- Tabela de Usuários -->
+    <div class="card-table">
+      <div class="table-header">
+        <h2>👥 Usuários Cadastrados</h2>
+        <button onclick="abrirModalNovo()" class="btn btn-primary btn-sm">
+          + Cadastrar Novo Usuário
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nome / Login</th>
+            <th>E-mail</th>
+            <th>Nível de Acesso</th>
+            <th>Status</th>
+            <th>Último Acesso</th>
+            <th style="text-align:right">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr>
+            <td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted)">
+              Carregando usuários...
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Tabela de Usuários -->
-  <div class="card-table">
-    <div class="table-header">
-      <h2>👥 Usuários Cadastrados</h2>
-      <button onclick="abrirModalNovo()" class="btn btn-primary btn-sm">
-        + Cadastrar Novo Usuário
-      </button>
+  <!-- CONTEÚDO: CALENDÁRIO -->
+  <div id="tab-content-calendario" style="display:none">
+    <!-- Estatísticas Calendário -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="lbl">Feriados Cadastrados</div>
+        <div id="stat-feriados" class="val">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Paradas / Férias Coletivas</div>
+        <div id="stat-paradas" class="val">0</div>
+      </div>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Nome / Login</th>
-          <th>E-mail</th>
-          <th>Nível de Acesso</th>
-          <th>Status</th>
-          <th>Último Acesso</th>
-          <th style="text-align:right">Ações</th>
-        </tr>
-      </thead>
-      <tbody id="users-tbody">
-        <tr>
-          <td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted)">
-            Carregando usuários...
-          </td>
-        </tr>
-      </tbody>
-    </table>
+
+    <!-- Tabela de Feriados -->
+    <div class="card-table" style="margin-bottom:24px">
+      <div class="table-header">
+        <h2>🏖️ Feriados &amp; Pontes</h2>
+        <button onclick="abrirModalNovoFeriado()" class="btn btn-primary btn-sm">
+          + Adicionar Feriado
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Data (AAAA-MM-DD)</th>
+            <th>Descrição</th>
+            <th style="text-align:right">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="feriados-tbody">
+          <tr>
+            <td colspan="3" style="text-align:center; padding:30px; color:var(--text-muted)">
+              Carregando feriados...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tabela de Paradas Programadas -->
+    <div class="card-table">
+      <div class="table-header">
+        <h2>⏸️ Paradas Programadas (Férias Coletivas, Manutenções)</h2>
+        <button onclick="abrirModalNovaParada()" class="btn btn-primary btn-sm">
+          + Adicionar Parada
+        </button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Início</th>
+            <th>Fim</th>
+            <th>Descrição</th>
+            <th>Setores Afetados</th>
+            <th style="text-align:right">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="paradas-tbody">
+          <tr>
+            <td colspan="5" style="text-align:center; padding:30px; color:var(--text-muted)">
+              Carregando paradas...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -647,8 +729,199 @@ function mostrarToast(msg) {
   setTimeout(() => t.style.display = 'none', 3500);
 }
 
+// ── Funções de Gestão de Calendário ──────────────────────────────────────────
+let dadosCalendario = { feriados: [], paradas: [] };
+
+function alternarAbaAdmin(aba) {
+  const btnUsers = document.getElementById('tab-btn-users');
+  const btnCal = document.getElementById('tab-btn-calendario');
+  const viewUsers = document.getElementById('tab-content-users');
+  const viewCal = document.getElementById('tab-content-calendario');
+
+  if (aba === 'users') {
+    btnUsers.className = 'btn btn-primary';
+    btnCal.className = 'btn btn-secondary';
+    viewUsers.style.display = 'block';
+    viewCal.style.display = 'none';
+  } else {
+    btnUsers.className = 'btn btn-secondary';
+    btnCal.className = 'btn btn-primary';
+    viewUsers.style.display = 'none';
+    viewCal.style.display = 'block';
+    carregarCalendario();
+  }
+}
+
+async function carregarCalendario() {
+  try {
+    const res = await fetch('/api/admin/calendario');
+    const data = await res.json();
+    if (data.ok) {
+      dadosCalendario = data;
+      renderizarCalendario();
+    }
+  } catch (err) {
+    mostrarToast('❌ Erro ao carregar calendário');
+  }
+}
+
+function renderizarCalendario() {
+  document.getElementById('stat-feriados').textContent = dadosCalendario.feriados.length;
+  document.getElementById('stat-paradas').textContent = dadosCalendario.paradas.length;
+
+  const fTbody = document.getElementById('feriados-tbody');
+  if (dadosCalendario.feriados.length === 0) {
+    fTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-muted)">Nenhum feriado cadastrado.</td></tr>';
+  } else {
+    fTbody.innerHTML = dadosCalendario.feriados.map((f, idx) => `
+      <tr>
+        <td><b>${f.data}</b></td>
+        <td>${f.descricao}</td>
+        <td style="text-align:right">
+          <button onclick="excluirFeriado(${idx})" class="btn btn-secondary btn-sm" style="color:#fca5a5">Remover</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const pTbody = document.getElementById('paradas-tbody');
+  if (dadosCalendario.paradas.length === 0) {
+    pTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">Nenhuma parada programada cadastrada.</td></tr>';
+  } else {
+    pTbody.innerHTML = dadosCalendario.paradas.map((p, idx) => `
+      <tr>
+        <td><b>${p.inicio}</b></td>
+        <td><b>${p.fim}</b></td>
+        <td>${p.descricao}</td>
+        <td><span class="role-badge role-operador">${Array.isArray(p.setores) ? p.setores.join(', ') : p.setores}</span></td>
+        <td style="text-align:right">
+          <button onclick="excluirParada(${idx})" class="btn btn-secondary btn-sm" style="color:#fca5a5">Remover</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+}
+
+function abrirModalNovoFeriado() {
+  document.getElementById('feriado-data').value = '';
+  document.getElementById('feriado-desc').value = '';
+  document.getElementById('modal-feriado').style.display = 'flex';
+}
+
+function abrirModalNovaParada() {
+  document.getElementById('parada-inicio').value = '';
+  document.getElementById('parada-fim').value = '';
+  document.getElementById('parada-desc').value = '';
+  document.getElementById('parada-setores').value = 'TODOS';
+  document.getElementById('modal-parada').style.display = 'flex';
+}
+
+async function salvarNovoFeriado(e) {
+  e.preventDefault();
+  const data = document.getElementById('feriado-data').value;
+  const descricao = document.getElementById('feriado-desc').value;
+  dadosCalendario.feriados.push({ data, descricao });
+  dadosCalendario.feriados.sort((a, b) => a.data.localeCompare(b.data));
+  await persistirCalendario();
+  fecharModais();
+}
+
+async function excluirFeriado(idx) {
+  if (!confirm('Remover este feriado?')) return;
+  dadosCalendario.feriados.splice(idx, 1);
+  await persistirCalendario();
+}
+
+async function salvarNovaParada(e) {
+  e.preventDefault();
+  const inicio = document.getElementById('parada-inicio').value;
+  const fim = document.getElementById('parada-fim').value;
+  const descricao = document.getElementById('parada-desc').value;
+  const setores = document.getElementById('parada-setores').value || 'TODOS';
+  dadosCalendario.paradas.push({ inicio, fim, descricao, setores });
+  await persistirCalendario();
+  fecharModais();
+}
+
+async function excluirParada(idx) {
+  if (!confirm('Remover esta parada?')) return;
+  dadosCalendario.paradas.splice(idx, 1);
+  await persistirCalendario();
+}
+
+async function persistirCalendario() {
+  const res = await fetch('/api/admin/calendario', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dadosCalendario),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    mostrarToast('✓ Calendário atualizado com sucesso!');
+    renderizarCalendario();
+  } else {
+    mostrarToast('❌ ' + (data.mensagem || 'Erro ao salvar calendário'));
+  }
+}
+
 document.addEventListener('DOMContentLoaded', carregarUsuarios);
 </script>
+
+<!-- Modal Novo Feriado -->
+<div id="modal-feriado" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🏖️ Adicionar Feriado</h3>
+      <button onclick="fecharModais()" class="modal-close">&times;</button>
+    </div>
+    <form onsubmit="salvarNovoFeriado(event)">
+      <div class="form-group">
+        <label>Data</label>
+        <input type="date" id="feriado-data" required/>
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <input type="text" id="feriado-desc" placeholder="Ex: Finados, Aniversário do Município" required/>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="fecharModais()" class="btn btn-secondary">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar Feriado</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Nova Parada Programada -->
+<div id="modal-parada" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>⏸️ Adicionar Parada Programada</h3>
+      <button onclick="fecharModais()" class="modal-close">&times;</button>
+    </div>
+    <form onsubmit="salvarNovaParada(event)">
+      <div class="form-group">
+        <label>Data Início</label>
+        <input type="date" id="parada-inicio" required/>
+      </div>
+      <div class="form-group">
+        <label>Data Fim</label>
+        <input type="date" id="parada-fim" required/>
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <input type="text" id="parada-desc" placeholder="Ex: Férias Coletivas 2026/2027" required/>
+      </div>
+      <div class="form-group">
+        <label>Setores Afetados</label>
+        <input type="text" id="parada-setores" value="TODOS" placeholder="TODOS ou nomes separados por vírgula" required/>
+      </div>
+      <div class="modal-footer">
+        <button type="button" onclick="fecharModais()" class="btn btn-secondary">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar Parada</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 </body>
 </html>

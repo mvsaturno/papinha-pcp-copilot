@@ -158,57 +158,42 @@ FERIADOS_NACIONAIS = {
     date(2027, 12, 25),
 }
 
+from engine.calendario import (
+    eh_dia_util as _cal_eh_dia_util,
+    avancar_dias_uteis as _cal_avancar,
+    recuar_dias_uteis as _cal_recuar,
+    contar_dias_uteis as _cal_contar,
+)
+
 def eh_dia_util(d: date) -> bool:
-    """Verifica se uma data é dia útil (segunda a sexta e fora de feriados nacionais)."""
-    return d.weekday() < 5 and d not in FERIADOS_NACIONAIS
+    """Verifica se uma data é dia útil considerando o calendário de feriados e paradas."""
+    return _cal_eh_dia_util(d)
 
 def recuar_dias_uteis_excia(data_saida: date, duracao_dias: int, eh_ultima: bool = False) -> date:
     """
     Calcula a data de entrada no padrão do Excia a partir da data de saída.
     No Excia, a data de saída de uma etapa é a data de entrada da etapa seguinte.
     Para a última etapa (Embalagem), o próprio dia da saída é o último dia trabalhado.
-    Para as etapas anteriores, os dias trabalhados são os dias anteriores até a entrada.
     """
-    if duracao_dias <= 0:
-        return data_saida
-    cur = data_saida
-    dias_contados = 0
-    if eh_ultima:
-        if eh_dia_util(cur):
-            dias_contados = 1
-            if duracao_dias == 1:
-                return cur
-    while True:
-        cur -= timedelta(days=1)
-        if eh_dia_util(cur):
-            dias_contados += 1
-            if dias_contados >= duracao_dias:
-                return cur
+    return _cal_recuar(data_saida, duracao_dias, eh_ultima=eh_ultima)
 
 def avancar_dias_uteis_excia(data_entrada: date, duracao_dias: int) -> date:
-    """Avança N dias úteis a partir da data de entrada considerando feriados."""
-    if duracao_dias <= 0:
-        return data_entrada
-    cur = data_entrada
-    dias_contados = 0
-    while dias_contados < duracao_dias:
-        cur += timedelta(days=1)
-        if eh_dia_util(cur):
-            dias_contados += 1
-    return cur
-
+    """Avança N dias úteis a partir da data de entrada considerando feriados e paradas."""
+    return _cal_avancar(data_entrada, duracao_dias)
 
 def contar_dias_uteis_excia(data_inicio: date, data_fim: date) -> int:
     """Conta a quantidade de dias úteis entre data_inicio e data_fim."""
-    if data_inicio >= data_fim:
-        return 0
-    cur = data_inicio
-    dias = 0
-    while cur < data_fim:
-        cur += timedelta(days=1)
-        if eh_dia_util(cur):
-            dias += 1
-    return dias
+    return _cal_contar(data_inicio, data_fim)
+
+def semanas_entre(aass_a: int, aass_b: int) -> int:
+    """
+    Calcula a diferença em semanas entre dois períodos AASS (aass_a - aass_b),
+    preservando o sinal e cruzando corretamente anos e viradas de calendário.
+    Ex: 2702 e 2652 → 3 semanas (semana 02/2027 vs 52/2026).
+    """
+    d_a = sexta_da_semana(aass_a)
+    d_b = sexta_da_semana(aass_b)
+    return round((d_a - d_b).days / 7)
 
 
 def aass_add(aass: int, n_semanas: int) -> int:

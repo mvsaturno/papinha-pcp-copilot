@@ -65,6 +65,8 @@ class ProdutoMRP:
     saldo: float
     parse_ok: bool = True
     avisos: list[str] = field(default_factory=list)
+    origem_api: bool = False
+    cor_fallback: bool = False
 
 
 @dataclass
@@ -88,6 +90,8 @@ class BlocoInsumo:
     estoque_cru: float = 0.0
     estoque_fio: float = 0.0
     cascata_info: Optional[dict] = None
+    origem_api: bool = False
+    cor_fallback: bool = False
 
 
 # ──────────────────────────────────────────────
@@ -122,6 +126,8 @@ class MatchInsumo:
     saldo: float
     # Avaliação de status
     status: str = ""       # OK_ESTOQUE | OK_FUTURO | FALTA
+    previsao_tipo: str = "ESTOQUE"  # ESTOQUE | A_CAMINHO | ESTIMATIVA | SEM_PREVISAO
+    previsao_detalhe: str = ""
     disponivel_em: Optional[date] = None
     fase_consumo: str = "CORTE"
     bloqueante: bool = False
@@ -162,6 +168,7 @@ class FaseCronograma:
     inicio: date
     fim: date
     dias: int
+    paradas: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -195,6 +202,7 @@ class AnaliseCapacidade:
     cabe_no_alvo: bool = False
     semana_sugerida: Optional[int] = None
     avisos: list[str] = field(default_factory=list)
+    janela_autonomia: dict = field(default_factory=dict)
 
 
 # ──────────────────────────────────────────────

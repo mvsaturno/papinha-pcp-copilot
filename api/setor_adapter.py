@@ -20,6 +20,24 @@ DEFAULT_SUGERIDOS_YAML = CONFIG_DIR / "lead_times_sugeridos.yaml"
 _CACHE_SUGERIDOS: Optional[Dict[str, Tuple[int, int]]] = None
 
 
+ALIASES_SETORES = {
+    "ESTAMPA NUCA": "ESTAMPARIA_NUCA",
+    "ESTAMPARIA NUCA": "ESTAMPARIA_NUCA",
+    "QUAL. ESTAMPARIA": "QUAL_ESTAMPARIA",
+    "QUAL. ESTAMPARIA NUCA": "QUAL_ESTAMPARIA_NUCA",
+    "QUAL. COSTURA": "QUAL_COSTURA",
+    "QUAL. LAVANDERIA": "QUAL_LAVANDERIA",
+    "QUAL. APLIQUE": "QUAL_APLIQUE",
+    "QUAL. ENTRETELA": "QUAL_ENTRETELA",
+    "ACAB. COST.": "ACAB_COST",
+    "ACAB. COSTURA": "ACAB_COST",
+    "QUAL. ACABAMENTOS COSTURA": "QUAL_ACABAMENTOS_COSTURA",
+    "QUAL.": "QUAL",
+    "CASEADO/BOTAO": "CASEADO_BOTAO",
+    "PRE PASSADORIA/REVISAO/EMBALAG": "PRE_PASSADORIA_REVISAO_EMBALAG",
+}
+
+
 def normalizar_nome_setor(nome: str) -> str:
     """Normaliza nome de setor para correspondência consistente."""
     if not nome:
@@ -36,6 +54,11 @@ def normalizar_nome_setor(nome: str) -> str:
         .replace("Ú", "U")
         .replace("Ç", "C")
     )
+    if n in ALIASES_SETORES:
+        return ALIASES_SETORES[n]
+    n_sub = n.replace(".", "").replace("  ", " ").strip()
+    if n_sub in ALIASES_SETORES:
+        return ALIASES_SETORES[n_sub]
     return n
 
 

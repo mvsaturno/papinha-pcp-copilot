@@ -1,0 +1,55 @@
+# config/calendario.yaml — Calendário produtivo: feriados e paradas programadas
+versao: 1
+descricao: "Feriados nacionais e paradas programadas (férias coletivas, manutenção) da Papinha Baby"
+
+feriados:
+  # 2025
+  - {data: "2025-01-01", descricao: "Confraternização Universal"}
+  - {data: "2025-03-03", descricao: "Carnaval"}
+  - {data: "2025-03-04", descricao: "Carnaval"}
+  - {data: "2025-04-18", descricao: "Sexta-feira Santa"}
+  - {data: "2025-04-21", descricao: "Tiradentes"}
+  - {data: "2025-05-01", descricao: "Dia do Trabalho"}
+  - {data: "2025-06-19", descricao: "Corpus Christi"}
+  - {data: "2025-09-07", descricao: "Independência do Brasil"}
+  - {data: "2025-10-12", descricao: "Nossa Senhora Aparecida"}
+  - {data: "2025-11-02", descricao: "Finados"}
+  - {data: "2025-11-15", descricao: "Proclamação da República"}
+  - {data: "2025-11-20", descricao: "Dia da Consciência Negra"}
+  - {data: "2025-12-25", descricao: "Natal"}
+
+  # 2026
+  - {data: "2026-01-01", descricao: "Confraternização Universal"}
+  - {data: "2026-02-16", descricao: "Carnaval"}
+  - {data: "2026-02-17", descricao: "Carnaval"}
+  - {data: "2026-04-03", descricao: "Sexta-feira Santa"}
+  - {data: "2026-04-21", descricao: "Tiradentes"}
+  - {data: "2026-05-01", descricao: "Dia do Trabalho"}
+  - {data: "2026-06-04", descricao: "Corpus Christi"}
+  - {data: "2026-09-07", descricao: "Independência do Brasil"}
+  - {data: "2026-10-12", descricao: "Nossa Senhora Aparecida"}
+  - {data: "2026-11-02", descricao: "Finados"}
+  - {data: "2026-11-15", descricao: "Proclamação da República"}
+  - {data: "2026-11-20", descricao: "Dia da Consciência Negra"}
+  - {data: "2026-12-25", descricao: "Natal"}
+
+  # 2027
+  - {data: "2027-01-01", descricao: "Confraternização Universal"}
+  - {data: "2027-02-08", descricao: "Carnaval"}
+  - {data: "2027-02-09", descricao: "Carnaval"}
+  - {data: "2027-03-26", descricao: "Sexta-feira Santa"}
+  - {data: "2027-04-21", descricao: "Tiradentes"}
+  - {data: "2027-05-01", descricao: "Dia do Trabalho"}
+  - {data: "2027-05-27", descricao: "Corpus Christi"}
+  - {data: "2027-09-07", descricao: "Independência do Brasil"}
+  - {data: "2027-10-12", descricao: "Nossa Senhora Aparecida"}
+  - {data: "2027-11-02", descricao: "Finados"}
+  - {data: "2027-11-15", descricao: "Proclamação da República"}
+  - {data: "2027-11-20", descricao: "Dia da Consciência Negra"}
+  - {data: "2027-12-25", descricao: "Natal"}
+
+paradas:
+  - inicio: "2026-12-21"
+    fim: "2027-01-04"
+    descricao: "Férias coletivas 2026/27 (PLACEHOLDER - substituir)"
+    setores: "TODOS"

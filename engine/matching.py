@@ -117,38 +117,73 @@ def casar_com_mrp(
     of_match = melhor_of
     prod_list = ofs_por_artigo[of_match]
 
-    # Verificar divergência de cor
-    for prod, bloco in prod_list:
-        if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
-            avisos.append(
-                f"Divergência de código de cor: pedido ({linha.cor} {linha.desc_cor}) "
-                f"vs MRP ({bloco.cod_cor} {bloco.nome_cor}) — confirmar de-para de cores no Excia"
-            )
-            break  # Uma mensagem por OF é suficiente
+    # Detectar se os blocos vêm da integração de API
+    vem_da_api = any(getattr(b, "origem_api", False) or getattr(p, "origem_api", False) for p, b in prod_list)
 
-    # Construir lista de insumos
+    # Verificar divergência de cor (apenas para relatório PDF, pois via API os domínios de cores são distintos)
+    if not vem_da_api:
+        for prod, bloco in prod_list:
+            if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
+                avisos.append(
+                    f"Divergência de código de cor: pedido ({linha.cor} {linha.desc_cor}) "
+                    f"vs MRP ({bloco.cod_cor} {bloco.nome_cor}) — confirmar de-para de cores no Excia"
+                )
+                break  # Uma mensagem por OF é suficiente
+
+    # Construir lista de insumos agrupando por (cod_insumo, cod_cor) para somar consumos de partes/faixas
     tecido_principal_encontrado = False
     keywords_tecido = cfg.get("tecido_principal_keywords", ["MALHA", "RIBANA"])
 
+    itens_agrupados: dict[tuple[str, str], dict] = {}
     for prod, bloco in prod_list:
-        # Verificar se é tecido principal
+        chave = (bloco.cod_insumo, bloco.cod_cor)
+        if chave not in itens_agrupados:
+            itens_agrupados[chave] = {
+                "bloco": bloco,
+                "prod": prod,
+                "consumo_total": 0.0,
+                "cor_fallback": False,
+                "setor_atual": prod.setor_atual if prod.setor_atual else "",
+            }
+        itens_agrupados[chave]["consumo_total"] += prod.consumo
+        if getattr(prod, "cor_fallback", False) or getattr(bloco, "cor_fallback", False):
+            itens_agrupados[chave]["cor_fallback"] = True
+        if prod.setor_atual and not itens_agrupados[chave]["setor_atual"]:
+            itens_agrupados[chave]["setor_atual"] = prod.setor_atual
+
+    for (cod_ins, cod_cor), item in itens_agrupados.items():
+        bloco = item["bloco"]
+        prod = item["prod"]
+        consumo_total = item["consumo_total"]
+        cor_fallback = item["cor_fallback"]
+        setor_atual = item["setor_atual"]
+
         desc_upper = bloco.descricao.upper()
         for kw in keywords_tecido:
             if kw in desc_upper:
                 tecido_principal_encontrado = True
                 break
 
+        insumo_avisos: list[str] = []
         is_cor_divergente = False
-        
-        # Ignorar materiais que não possuem cor de fato
-        ignorar_divergencia = False
-        cor_nome_up = bloco.nome_cor.upper() if bloco.nome_cor else ""
-        if bloco.cod_cor in ["", "0", "00", "000000", "00000", "0000", "000", "00"] or "PADRAO" in cor_nome_up or "UNICO" in cor_nome_up:
-            ignorar_divergencia = True
-            
-        if not ignorar_divergencia:
-            if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
+
+        if vem_da_api:
+            # Via API, cor divergente só ocorre se não encontrou a cor na ficha e caiu no fallback
+            if cor_fallback:
                 is_cor_divergente = True
+                insumo_avisos.append(
+                    f"cor {linha.cor} não cadastrada na ficha deste insumo (usando {bloco.cod_cor})"
+                )
+        else:
+            # Caminho legado PDF: comparação direta de código de cor
+            ignorar_divergencia = False
+            cor_nome_up = bloco.nome_cor.upper() if bloco.nome_cor else ""
+            if bloco.cod_cor in ["", "0", "00", "000000", "00000", "0000", "000", "00"] or "PADRAO" in cor_nome_up or "UNICO" in cor_nome_up:
+                ignorar_divergencia = True
+
+            if not ignorar_divergencia:
+                if bloco.cod_cor and linha.cor and bloco.cod_cor != linha.cor:
+                    is_cor_divergente = True
 
         insumo = MatchInsumo(
             cod_insumo=bloco.cod_insumo,
@@ -156,16 +191,16 @@ def casar_com_mrp(
             un=bloco.un,
             cod_cor=bloco.cod_cor,
             nome_cor=bloco.nome_cor,
-            necessario=prod.consumo,
-            aloc_estoque=prod.aloc_estoque,
-            aloc_compra=prod.aloc_compra,
-            aloc_tecelagem=prod.aloc_tecelagem,
-            aloc_pend_tint=prod.aloc_pend_tint,
-            aloc_tinturaria=prod.aloc_tinturaria,
-            saldo=prod.saldo,
+            necessario=consumo_total,
+            aloc_estoque=bloco.estoque if vem_da_api else prod.aloc_estoque,
+            aloc_compra=bloco.compra if vem_da_api else prod.aloc_compra,
+            aloc_tecelagem=bloco.tecelagem if vem_da_api else prod.aloc_tecelagem,
+            aloc_pend_tint=bloco.pend_tint if vem_da_api else prod.aloc_pend_tint,
+            aloc_tinturaria=bloco.tinturaria if vem_da_api else prod.aloc_tinturaria,
+            saldo=bloco.saldo if vem_da_api else prod.saldo,
             cor_divergente=is_cor_divergente,
-            # Propagar fase real da ficha técnica (setor_atual preenchido pelo MrpAdapter via API)
-            fase_consumo=prod.setor_atual if prod.setor_atual else "",
+            avisos=insumo_avisos,
+            fase_consumo=setor_atual,
             estoque_cru=getattr(bloco, "estoque_cru", 0.0),
             cascata_info=getattr(bloco, "cascata_info", None),
         )

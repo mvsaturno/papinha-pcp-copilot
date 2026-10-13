@@ -25,6 +25,7 @@ from parsers.comum import (
     contar_dias_uteis_excia,
     quarta_da_semana,
 )
+from engine.calendario import obter_paradas_no_intervalo
 from api.fluxo_adapter import FluxoAdapter
 from api.setor_adapter import normalizar_nome_setor, gerar_sugestao
 
@@ -171,7 +172,9 @@ def montar_cronograma(
         for nome_f, dias in lista_fases_dias:
             ini = cur
             fim = avancar_dias_uteis_excia(ini, dias)
-            fases_calc.append(FaseCronograma(nome=nome_f, inicio=ini, fim=fim, dias=dias))
+            paradas = obter_paradas_no_intervalo(ini, fim, setor=nome_f)
+            paradas_strs = [f"{p.descricao} {p.inicio.strftime('%d/%m')}–{p.fim.strftime('%d/%m')}" for p in paradas]
+            fases_calc.append(FaseCronograma(nome=nome_f, inicio=ini, fim=fim, dias=dias, paradas=paradas_strs))
             cur = fim
         return fases_calc, cur
 
@@ -280,11 +283,14 @@ def ajustar_cronograma_backward(crono: Cronograma, nova_data_fim: date) -> Crono
         for idx, f in enumerate(reversed(fases_list)):
             fim = cur
             inicio = recuar_dias_uteis_excia(fim, f.dias, eh_ultima=(idx == 0))
+            paradas = obter_paradas_no_intervalo(inicio, fim, setor=f.nome)
+            paradas_strs = [f"{p.descricao} {p.inicio.strftime('%d/%m')}–{p.fim.strftime('%d/%m')}" for p in paradas]
             novas.append(FaseCronograma(
                 nome=f.nome,
                 inicio=inicio,
                 fim=fim,
-                dias=f.dias
+                dias=f.dias,
+                paradas=paradas_strs,
             ))
             cur = inicio
         novas.reverse()

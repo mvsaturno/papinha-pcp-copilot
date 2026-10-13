@@ -436,6 +436,42 @@ async def api_admin_delete_user(user_id: int, request: Request):
     return JSONResponse(content={"ok": ok, "mensagem": msg})
 
 
+@app.get("/api/admin/calendario")
+async def api_admin_get_calendario(request: Request):
+    """Retorna feriados e paradas programadas."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+    from engine.calendario import carregar_calendario
+    cal = carregar_calendario(force_reload=True)
+    feriados = [{"data": d.isoformat(), "descricao": desc} for d, desc in sorted(cal.feriados.items())]
+    paradas = [
+        {
+            "inicio": p.inicio.isoformat(),
+            "fim": p.fim.isoformat(),
+            "descricao": p.descricao,
+            "setores": p.setores,
+        }
+        for p in cal.paradas
+    ]
+    return JSONResponse(content={"ok": True, "feriados": feriados, "paradas": paradas})
+
+
+@app.put("/api/admin/calendario")
+async def api_admin_save_calendario(request: Request):
+    """Atualiza feriados e paradas programadas no YAML."""
+    user = obter_usuario_logado(request)
+    if not user or user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"ok": False, "mensagem": "Acesso negado."})
+    try:
+        dados = await request.json()
+        from engine.calendario import salvar_calendario
+        salvar_calendario(dados)
+        return JSONResponse(content={"ok": True, "mensagem": "Calendário atualizado com sucesso."})
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "mensagem": f"Erro ao salvar calendário: {exc}"})
+
+
 # ── Endpoint de demonstração com fixtures locais ─────────────────────────────
 @app.get("/analisar-demo")
 async def endpoint_analisar_demo():

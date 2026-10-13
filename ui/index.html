@@ -1294,8 +1294,9 @@ function criarCard(p, idx) {
             <div class="timeline-item">
               <div class="tl-dot"></div>
               <div class="tl-content">
-                <div class="tl-nome">${f.nome} <span style="color:var(--text-muted);font-size:11px">(${f.dias}d)</span></div>
-                <div class="tl-datas">${dateFmt(f.inicio)} → ${dateFmt(f.fim)}</div>
+                <div class="tl-nome">${f.nome} <span style="color:var(--text-muted);font-size:11px">(${f.dias} dias úteis)</span></div>
+                <div class="tl-datas">Entrada: ${dateFmt(f.inicio)} → Saída: ${dateFmt(f.fim)}</div>
+                ${f.paradas && f.paradas.length > 0 ? `<div style="font-size:10px;color:#F59E0B;margin-top:2px;font-weight:500">⏸ inclui parada: ${f.paradas.join(', ')}</div>` : ''}
               </div>
             </div>
           `).join('')}
@@ -1307,8 +1308,9 @@ function criarCard(p, idx) {
       <div class="timeline-item">
         <div class="tl-dot"></div>
         <div class="tl-content">
-          <div class="tl-nome">${f.nome} <span style="color:var(--text-muted);font-size:11px">(${f.dias}d)</span></div>
-          <div class="tl-datas">${dateFmt(f.inicio)} → ${dateFmt(f.fim)}</div>
+          <div class="tl-nome">${f.nome} <span style="color:var(--text-muted);font-size:11px">(${f.dias} dias úteis)</span></div>
+          <div class="tl-datas">Entrada: ${dateFmt(f.inicio)} → Saída: ${dateFmt(f.fim)}</div>
+          ${f.paradas && f.paradas.length > 0 ? `<div style="font-size:10px;color:#F59E0B;margin-top:2px;font-weight:500">⏸ inclui parada: ${f.paradas.join(', ')}</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -1319,7 +1321,10 @@ function criarCard(p, idx) {
   if (p.capacidade && p.capacidade.semanas_relevantes) {
     const minSem = Math.min(...p.capacidade.semanas_relevantes.map(s => s.aass));
     const maxSem = Math.max(...p.capacidade.semanas_relevantes.map(s => s.aass));
-    const labelJanela = p.semana_alvo ? `<div style="font-size:12px; font-weight:600; margin-bottom: 8px; color:var(--text)">Janela de autonomia do PCP: semanas ${p.semana_alvo - 3} a ${p.semana_alvo} <span title="Antecipação acima de 3 semanas requer autorização da gestão" style="cursor:help">ℹ️</span></div>` : '';
+    const janela = p.capacidade && p.capacidade.janela_autonomia;
+    const iniJan = janela?.inicio || (p.semana_alvo ? p.semana_alvo - 3 : '');
+    const fimJan = janela?.fim || p.semana_alvo;
+    const labelJanela = p.semana_alvo ? `<div style="font-size:12px; font-weight:600; margin-bottom: 8px; color:var(--text)">Janela de autonomia do PCP: semanas ${iniJan} a ${fimJan} <span title="Antecipação acima de 3 semanas requer autorização da gestão" style="cursor:help">ℹ️</span></div>` : '';
     
     capHtml = labelJanela + p.capacidade.semanas_relevantes.map(s => {
       const isAlvo = s.aass === p.semana_alvo;
@@ -1340,11 +1345,31 @@ function criarCard(p, idx) {
     insHtml = p.insumos.map(ins => {
       const statusCls = ins.status === 'OK_ESTOQUE' ? 'tag-ok-estoque' :
                         ins.status === 'OK_FUTURO' ? 'tag-ok-futuro' : 'tag-falta';
-      const statusLabel = ins.status === 'OK_ESTOQUE' ? '✓ Estoque' :
-                          ins.status === 'OK_FUTURO' ? '⏳ A caminho' : '✗ FALTA';
-      const dispStr = ins.disponivel_em ? ` — disponível ${dateFmt(ins.disponivel_em)}` : '';
+      let statusLabel = '✗ FALTA';
+      let tagExtra = '';
+
+      if (ins.previsao_tipo === 'ESTOQUE' || ins.status === 'OK_ESTOQUE') {
+        statusLabel = '✓ Estoque';
+      } else if (ins.previsao_tipo === 'A_CAMINHO') {
+        statusLabel = '⏳ A caminho';
+        if (ins.disponivel_em) tagExtra = ` — disponível ${dateFmt(ins.disponivel_em)}`;
+      } else if (ins.previsao_tipo === 'ESTIMATIVA') {
+        statusLabel = '✗ FALTA';
+        tagExtra = ins.disponivel_em
+          ? ` — estimativa: ${dateFmt(ins.disponivel_em)} (${ins.previsao_detalhe || 'compra'})`
+          : (ins.previsao_detalhe ? ` (${ins.previsao_detalhe})` : '');
+      } else if (ins.previsao_tipo === 'SEM_PREVISAO') {
+        statusLabel = '✗ FALTA';
+        tagExtra = ins.previsao_detalhe ? ` (${ins.previsao_detalhe})` : '';
+      }
+
       const bloqStr = ins.bloqueante ? `<span class="insumo-tag tag-bloqueante">BLOQUEANTE</span>` : '';
-      const divCor = ins.cor_divergente ? `<span class="insumo-tag" style="background:var(--red-dim);color:var(--red);border-color:var(--red);font-weight:600">⚠️ Cor Divergente (${ins.nome_cor})</span>` : '';
+      let divCor = '';
+      if (ins.cor_divergente) {
+        const avisoNaoCad = ins.avisos && ins.avisos.find(a => a.includes('não cadastrada'));
+        const textoCor = avisoNaoCad ? `⚠️ ${avisoNaoCad}` : `⚠️ Cor Divergente (${ins.nome_cor})`;
+        divCor = `<span class="insumo-tag" style="background:var(--red-dim);color:var(--red);border-color:var(--red);font-weight:600">${textoCor}</span>`;
+      }
       
       // Diagnóstico da Cadeia de Suprimentos em Cascata (Malha Tinta ➔ Malha Crua ➔ Fio)
       let cascataHtml = '';
@@ -1364,7 +1389,7 @@ function criarCard(p, idx) {
       return `<div class="insumo-row">
         <div class="insumo-nome"><strong>[${ins.cod_insumo}]</strong> ${ins.descricao || ''}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
-          <span class="insumo-tag ${statusCls}">${statusLabel}${dispStr}</span>
+          <span class="insumo-tag ${statusCls}">${statusLabel}${tagExtra}</span>
           ${bloqStr}
           ${divCor}
           <span class="insumo-tag" style="background:var(--surface2);color:var(--text-muted)">Fase: ${ins.fase_consumo}</span>
@@ -1420,6 +1445,12 @@ function criarCard(p, idx) {
           </span>
           <span class="lbl">${p.of_emitida ? 'Semana da OF' : 'Semana Alvo'}</span>
         </div>
+        <div class="meta-item">
+          <span class="val" style="color:${p.veredito==='VERDE'?'var(--green)':p.veredito==='AMARELO'?'var(--yellow)':p.veredito==='CANCELADO'?'#9CA3AF':'var(--red)'}">
+            ${p.capacidade && p.capacidade.semana_sugerida ? `Sem. ${p.capacidade.semana_sugerida}` : (p.sugestao_semana ? `Sem. ${p.sugestao_semana}` : '—')}
+          </span>
+          <span class="lbl">Semana de Produção</span>
+        </div>
       </div>
       <span class="chevron">▼</span>
     </div>
@@ -1428,7 +1459,7 @@ function criarCard(p, idx) {
       ${motivosHtml}
       <div class="inner-sections">
         <div class="inner-box">
-          <h4>📅 Cronograma ${p.of_emitida ? 'Oficial da OF' : 'Draft'} ${p.lead_time_sugerido_nao_confirmado ? '<span style="font-size:11px;font-weight:600;color:#F59E0B;background:rgba(245,158,11,0.12);padding:2px 7px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);margin-left:6px">⚠️ Lead times sugeridos</span>' : ''}</h4>
+          <h4>📅 Cronograma ${p.of_emitida ? 'Oficial da OF' : 'Draft'} <span title="Convenção Excia: a saída de uma fase é a entrada da fase seguinte. O rótulo em dias úteis indica a duração de trabalho na etapa." style="cursor:help;font-size:12px;color:var(--text-muted)">ℹ️</span> ${p.lead_time_sugerido_nao_confirmado ? '<span style="font-size:11px;font-weight:600;color:#F59E0B;background:rgba(245,158,11,0.12);padding:2px 7px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);margin-left:6px">⚠️ Lead times sugeridos</span>' : ''}</h4>
           ${partesTabsHtml}
           <div class="timeline">${timelineHtml || '<span style="color:var(--text-muted);font-size:12px">Não disponível</span>'}</div>
           ${p.cronograma ? `<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Rota: ${p.cronograma.rota_detectada} | OF: ${qtdFmt(p.qtd_of)} peças (c/ buffer)</div>` : ''}

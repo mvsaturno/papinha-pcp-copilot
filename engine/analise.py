@@ -31,6 +31,7 @@ from parsers.comum import (
     sexta_da_semana,
     quarta_da_semana,
     aass_add,
+    semanas_entre,
 )
 
 
@@ -318,30 +319,37 @@ def _decidir_veredito(
     # Sugestão de semana e lógica da janela
     semana_sug = analise_cap.semana_sugerida
     autonomia = cfg["geral"].get("semanas_autonomia_pcp", 3)
-    
-    # Determinar a "zona" do veredito (Sprint 2)
-    semana_cliente = aass_add(semana_alvo, cfg["geral"].get("semanas_antes_entrega_cliente", 2))
-    
-    if semana_sug is None or semana_sug >= semana_cliente:
+    semanas_max_sem_autorizacao = cfg["geral"].get("semanas_maximo_sem_autorizacao", 2)
+    semanas_gap_entrega = cfg["geral"].get("semanas_entre_producao_e_entrega", 1)
+
+    if semana_sug is None:
         veredito = "VERMELHO"
         if not motivos:
-            motivos.append(f"Inviável na data — propor entrega na semana {aass_add(semana_sug or semana_cliente, 2)}")
+            motivos.append("Inviável na data — nenhuma semana viável encontrada no horizonte analisado")
     else:
-        # Está em alguma das zonas candidatas viáveis
-        if (semana_alvo - autonomia) <= semana_sug <= semana_alvo:
-            # Janela
-            veredito = "VERDE"
-            if semana_sug < semana_alvo:
-                motivos.append(f"Antecipação de {semana_alvo - semana_sug} sem., dentro da autonomia")
-        elif semana_alvo < semana_sug < semana_cliente:
-            # Extra 2
+        diff_semanas = semanas_entre(semana_sug, semana_alvo)
+
+        if diff_semanas > semanas_max_sem_autorizacao:
+            veredito = "VERMELHO"
+            semana_nova_entrega = aass_add(semana_sug, semanas_gap_entrega)
+            if not motivos:
+                motivos.append(
+                    f"Inviável na data — propor entrega na semana {semana_nova_entrega} "
+                    f"(atraso de {diff_semanas} sem. requer autorização da gestão)"
+                )
+        elif diff_semanas > 0:
             veredito = "AMARELO"
             motivos.append("Viável, mas consome a margem interna de segurança (entrega−2) — decisão do PCP")
         else:
-            # Extra 1 (antes da janela)
-            veredito = "AMARELO"
-            motivos.append(f"Viável apenas com antecipação de {semana_alvo - semana_sug} semanas — REQUER AUTORIZAÇÃO DA GESTÃO")
-            
+            antecipacao = abs(diff_semanas)
+            if antecipacao <= autonomia:
+                veredito = "VERDE"
+                if antecipacao > 0:
+                    motivos.append(f"Antecipação de {antecipacao} sem., dentro da autonomia")
+            else:
+                veredito = "AMARELO"
+                motivos.append(f"Viável apenas com antecipação de {antecipacao} semanas — REQUER AUTORIZAÇÃO DA GESTÃO")
+
         if tem_bloqueante or tem_alertas or match.confianca == "BAIXA":
             if veredito == "VERDE":
                 veredito = "AMARELO"  # rebaixado por ressalvas
@@ -349,28 +357,44 @@ def _decidir_veredito(
         if veredito == "VERDE" and not motivos:
             motivos.append(f"Produzir para terminar na semana {semana_sug} (JIT)")
 
-    sugestao = _montar_sugestao(semana_sug, semana_alvo, pedido.entrega, cfg)
+    of_emitida = (
+        getattr(linha, "of_emitida", False)
+        or getattr(pedido, "of_emitida", False)
+        or (match and match.of_emitida)
+    )
+    sugestao = _montar_sugestao(semana_sug, semana_alvo, pedido.entrega, cfg, of_emitida=of_emitida)
     return veredito, motivos, sugestao, semana_sug
 
 
-def _montar_sugestao(semana_sug: Optional[int], semana_alvo: int, entrega: date, cfg: dict) -> str:
+def _montar_sugestao(
+    semana_sug: Optional[int],
+    semana_alvo: int,
+    entrega: date,
+    cfg: dict,
+    of_emitida: bool = False,
+) -> str:
     """Monta a sugestão textual para o analista."""
     if semana_sug is None:
         return "❌ Nenhuma semana viável encontrada no horizonte analisado"
 
-    if semana_sug <= semana_alvo:
-        sexta = sexta_da_semana(semana_sug)
+    data_termino = quarta_da_semana(semana_sug) if of_emitida else sexta_da_semana(semana_sug)
+    data_termino_fmt = formatar_data_br(data_termino)
+
+    if semanas_entre(semana_sug, semana_alvo) <= 0:
         return (
             f"✅ Produzir na semana {semana_sug} "
-            f"(termina {formatar_data_br(sexta)}) — "
+            f"(termina {data_termino_fmt}) — "
             f"entrega ao cliente mantida ({formatar_data_br(entrega)})"
         )
     else:
-        semana_entrega_nova = aass_add(semana_sug, 1)
+        semanas_gap = cfg.get("geral", {}).get("semanas_entre_producao_e_entrega", 1)
+        semana_entrega_nova = aass_add(semana_sug, semanas_gap)
         sexta_nova = sexta_da_semana(semana_entrega_nova)
+        sexta_nova_fmt = formatar_data_br(sexta_nova)
         return (
-            f"❌ Data inviável — sugerir ao comercial nova entrega na semana "
-            f"{semana_entrega_nova} ({formatar_data_br(sexta_nova)})"
+            f"❌ Semana alvo {semana_alvo} não atende. "
+            f"Produção sugerida: semana {semana_sug} (término {data_termino_fmt}). "
+            f"Nova entrega a propor ao comercial: semana {semana_entrega_nova} ({sexta_nova_fmt})."
         )
 
 

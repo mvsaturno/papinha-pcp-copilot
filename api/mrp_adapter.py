@@ -80,7 +80,7 @@ class MrpAdapter:
                 materiais_necessarios.add(cod_insumo)
 
                 # Determinar cor do insumo para esta variante de cor do produto
-                cod_cor_insumo = _resolver_cor_insumo(ins_data, linha.cor)
+                cod_cor_insumo, _ = _resolver_cor_insumo(ins_data, linha.cor)
                 if cod_cor_insumo is not None:
                     chaves_necessarias.add(f"{cod_insumo}_{cod_cor_insumo}")
 
@@ -108,7 +108,7 @@ class MrpAdapter:
                     continue
 
                 # Resolver cor
-                cod_cor_insumo = _resolver_cor_insumo(ins_data, linha.cor)
+                cod_cor_insumo, cor_fallback = _resolver_cor_insumo(ins_data, linha.cor)
                 if cod_cor_insumo is None:
                     continue
 
@@ -143,11 +143,15 @@ class MrpAdapter:
                         tinturaria=0.0,
                         saldo=0.0,
                         estoque_cru=cru_qtd,
+                        origem_api=True,
+                        cor_fallback=cor_fallback,
                     )
                     insumos_agrupados[chave] = bloco
 
                 bloco = insumos_agrupados[chave]
                 bloco.consumo += consumo_total
+                if cor_fallback:
+                    bloco.cor_fallback = True
                 bloco.estoque_cru = cru_qtd
                 bloco.saldo = (
                     bloco.estoque + bloco.compra + bloco.tecelagem
@@ -192,6 +196,8 @@ class MrpAdapter:
                     aloc_pend_tint=bloco.pend_tint,
                     aloc_tinturaria=bloco.tinturaria,
                     saldo=bloco.saldo,
+                    origem_api=True,
+                    cor_fallback=cor_fallback,
                 )
                 bloco.produtos.append(prod)
 
@@ -311,29 +317,30 @@ class MrpAdapter:
 
 # ── Funções auxiliares ────────────────────────────────────────────────────────
 
-def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> Optional[str]:
+def _resolver_cor_insumo(ins_data: dict, cor_produto: str) -> tuple[Optional[str], bool]:
     """
     Determina o código de cor do insumo para uma dada cor de produto.
+    Retorna tupla (cod_cor_insumo, cor_fallback).
     Lógica:
       1. Procura na lista 'cor' do insumo o item onde cor == cor_produto
-         e retorna cor_i (código interno da cor do insumo).
-      2. Se não encontrar, usa o primeiro item da lista (fallback).
-      3. Se a lista estiver vazia, retorna None (insumo sem cor — ignorar).
+         e retorna (cor_i, False).
+      2. Se não encontrar, usa o primeiro item da lista (cor_i, True) — fallback.
+      3. Se a lista estiver vazia, retorna (None, False) (insumo sem cor — ignorar).
 
     Campo 'cor_i' = "0" significa que o insumo não tem variação de cor
     (ex: linha de costura preta usada para qualquer cor de produto).
     """
     cor_lista = ins_data.get("cor", [])
     if not cor_lista:
-        return None
+        return None, False
 
     # Busca exata pela cor do produto
     for c in cor_lista:
         if c.get("cor") == cor_produto:
-            return c.get("cor_i", "0")
+            return c.get("cor_i", "0"), False
 
     # Fallback: primeira cor disponível
-    return cor_lista[0].get("cor_i", "0")
+    return cor_lista[0].get("cor_i", "0"), True
 
 
 # Conjunto padrão de tamanhos/grades de vestuário conhecidos
